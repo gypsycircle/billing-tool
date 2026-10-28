@@ -12,7 +12,7 @@ import { FormProvider, type FieldNamesMarkedBoolean } from "react-hook-form";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { BookingDraft, BookingRef } from "@/lib/domain/types";
+import { BOOKING_VERSION_HEADER, type BookingDraft, type BookingRef } from "@/lib/domain/types";
 import { useAmountPreview } from "@/hooks/use-amount-preview";
 import { useApiMutation } from "@/hooks/use-api-mutation";
 import {
@@ -34,7 +34,7 @@ type BookingFormProps =
       defaultValues: BookingFormInput;
       invoice: InvoiceInfo;
       bookingId: string;
-      /** The booking's updatedAt when the form was opened — sent as If-Match. */
+      /** The booking's updatedAt when the form was opened — sent as X-Booking-Version. */
       version: string;
     };
 
@@ -79,7 +79,7 @@ export function BookingForm(props: BookingFormProps) {
         : await mutate(`/api/bookings/${props.bookingId}`, {
             method: "PATCH",
             body: changedFields(values, formState.dirtyFields),
-            headers: { "If-Match": props.version },
+            headers: { [BOOKING_VERSION_HEADER]: props.version },
             toastOnError: false,
           });
     if (!result) return; // a submit was already in flight

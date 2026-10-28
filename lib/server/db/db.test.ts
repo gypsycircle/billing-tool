@@ -10,7 +10,7 @@ import { MongoMemoryServer } from "mongodb-memory-server-core";
 import type { Document } from "mongodb";
 import { addDays, todayIST } from "@/lib/domain/dates";
 import { parseBookingFilters } from "@/lib/domain/filters";
-import { LEDGER_ROW_FIELDS, SEARCH_HIT_FIELDS, type Booking } from "@/lib/domain/types";
+import { LEDGER_ROW_FIELDS, type Booking } from "@/lib/domain/types";
 
 vi.mock("../guards", () => ({ verifySession: async () => {}, requireSessionOrRedirect: async () => {} }));
 
@@ -254,18 +254,6 @@ describe("query plans", () => {
     const stages = stagesOf(plan);
     expect(stages).toContain("DISTINCT_SCAN");
     expect(stages).not.toContain("COLLSCAN");
-  });
-});
-
-// ── ⌘K search ───────────────────────────────────────────────────────────────
-describe("searchBookings", () => {
-  it("returns a few non-archived matches, newest first, with only what the menu shows", async () => {
-    await seed(FOUR);
-    const { searchBookings } = await import("./bookings-repo");
-    const hits = await searchBookings(parseBookingFilters({ q: "adarsh" }), today, 8);
-    expect(hits.map((h) => h.bookingId)).toEqual(["d", "a"]);
-    expect(Object.keys(hits[0]).sort()).toEqual([...SEARCH_HIT_FIELDS].sort());
-    expect(await searchBookings(parseBookingFilters({}), today, 2)).toHaveLength(2);
   });
 });
 

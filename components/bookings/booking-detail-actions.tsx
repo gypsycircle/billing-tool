@@ -24,22 +24,17 @@ import { useBookingActions } from "@/hooks/use-booking-actions";
 import { useHotkey } from "@/hooks/use-hotkey";
 import { ArchiveDialog } from "./archive-dialog";
 
-interface BookingDetailActionsProps {
-  booking: BookingActionTarget;
-  /** False when a value doesn't fit the bill (the page explains which). */
-  printable: boolean;
-}
-
-export function BookingDetailActions({ booking, printable }: BookingDetailActionsProps) {
+export function BookingDetailActions({ booking }: { booking: BookingActionTarget }) {
   const router = useRouter();
   const actions = useBookingActions(booking);
   const bill = useBillPdf(booking);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const status = booking.bookingStatus;
+  // Archived bookings have no bill. A booking that doesn't fit is refused on
+  // download with the field to fix (the page also shows a warning).
   const hasBill = status !== "Archived";
-  const canPrint = hasBill && printable;
 
-  useHotkey("d", () => void bill.download(), { enabled: canPrint && !archiveOpen });
+  useHotkey("d", () => void bill.download(), { enabled: hasBill && !archiveOpen });
 
   return (
     <>
@@ -59,7 +54,6 @@ export function BookingDetailActions({ booking, printable }: BookingDetailAction
                   variant="outline"
                   size="icon-lg"
                   aria-label="Preview the Bill of Supply in a new tab"
-                  disabled={!canPrint}
                   onClick={bill.preview}
                 />
               }
@@ -69,7 +63,7 @@ export function BookingDetailActions({ booking, printable }: BookingDetailAction
             <TooltipContent>Preview in a new tab</TooltipContent>
           </Tooltip>
 
-          <Button size="lg" disabled={!canPrint || bill.pending} onClick={() => void bill.download()}>
+          <Button size="lg" disabled={bill.pending} onClick={() => void bill.download()}>
             {bill.pending ? <Loader2 className="animate-spin" /> : <Download />}
             Bill of Supply
             <Kbd className="ml-1 hidden bg-primary-foreground/15 text-primary-foreground sm:inline-flex">D</Kbd>

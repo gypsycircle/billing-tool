@@ -86,6 +86,13 @@ export interface BookingAmounts {
   paymentStatus: PaymentStatus;
 }
 
+/**
+ * Request header carrying the version (updatedAt) the user is changing, on
+ * PATCH and DELETE. Not If-Match: that standard header is enforced by Vercel's
+ * edge as an ETag precondition, which answers 412 before the app runs.
+ */
+export const BOOKING_VERSION_HEADER = "X-Booking-Version";
+
 /** What a write returns (POST, PATCH, DELETE): enough to link to the booking and keep editing it. */
 export type BookingRef = Pick<Booking, "bookingId" | "invoiceNumber" | "updatedAt" | "bookingStatus">;
 
@@ -121,11 +128,6 @@ export const LEDGER_ROW_FIELDS = [
 ] as const satisfies readonly (keyof Booking)[];
 
 export type LedgerRow = Pick<Booking, (typeof LEDGER_ROW_FIELDS)[number]>;
-
-/** One ⌘K search result. */
-export const SEARCH_HIT_FIELDS = ["bookingId", "invoiceNumber", "customerName", "packageName"] as const satisfies readonly (keyof Booking)[];
-
-export type BookingSearchHit = Pick<Booking, (typeof SEARCH_HIT_FIELDS)[number]>;
 
 /** Response shape of the health-check endpoint. */
 export interface HealthCheckResult {

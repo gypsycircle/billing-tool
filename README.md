@@ -130,7 +130,7 @@ app/
     auth/
       login/       — POST: validate code, issue session cookie
       logout/      — POST: clear session cookie
-    bookings/      — GET: one ledger page (same filters as the dashboard), or ?view=search&q= for ⌘K · POST: create (Idempotency-Key)
+    bookings/      — GET: one ledger page (same filters as the dashboard) · POST: create (Idempotency-Key)
     bookings/[id]/ — GET · PATCH: edit, or {bookingStatus} to cancel/reactivate/restore · DELETE: archive
                      (writes return only { bookingId, invoiceNumber, updatedAt, bookingStatus })
     bookings/[id]/pdf/ — GET: Bill of Supply PDF (?inline=1 to open in the browser)

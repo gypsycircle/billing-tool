@@ -66,7 +66,7 @@ export function LedgerTable({
           <TableBody>
             {bookings.map((b) => (
               <TableRow key={b.bookingId} className={cn("group", inactive(b) && "text-muted-foreground")}>
-                <TableCell className="pl-5 font-heading text-base tabular">{b.invoiceNumber}</TableCell>
+                <TableCell className="pl-5 font-heading text-sm tabular">{b.invoiceNumber}</TableCell>
                 <TableCell className="max-w-48">
                   <Link
                     href={`/bookings/${b.bookingId}`}
@@ -165,6 +165,10 @@ export function LedgerTable({
               </div>
             </dl>
             <dl className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <dt>Pax</dt>
+                <dd className="font-medium text-foreground tabular">{b.travellers}</dd>
+              </div>
               <div className="flex items-center gap-1.5">
                 <dt>Payment</dt>
                 <dd>

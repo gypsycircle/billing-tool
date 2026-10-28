@@ -1,6 +1,6 @@
 // hooks/use-booking-actions.ts
 // Status changes for one booking: cancel, reactivate, archive, restore.
-// Each sends the version on screen (If-Match), so it can't overwrite a newer
+// Each sends the version on screen (X-Booking-Version), so it can't overwrite a newer
 // save; if someone else changed the booking first, the page refreshes to show it.
 
 "use client";
@@ -8,7 +8,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { BookingRef } from "@/lib/domain/types";
+import { BOOKING_VERSION_HEADER, type BookingRef } from "@/lib/domain/types";
 import { useApiMutation } from "./use-api-mutation";
 
 export function useBookingActions(booking: Pick<BookingRef, "bookingId" | "invoiceNumber" | "updatedAt">) {
@@ -19,7 +19,7 @@ export function useBookingActions(booking: Pick<BookingRef, "bookingId" | "invoi
 
   const run = useCallback(
     async (request: Parameters<typeof mutate>[1], success: string, after?: () => void) => {
-      const result = await mutate(url, { ...request, headers: { "If-Match": booking.updatedAt } });
+      const result = await mutate(url, { ...request, headers: { [BOOKING_VERSION_HEADER]: booking.updatedAt } });
       if (result?.status === 412) router.refresh(); // show the newer version
       if (!result?.data) return false;
       toast.success(success);

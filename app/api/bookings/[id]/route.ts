@@ -6,12 +6,12 @@
 // DELETE /api/bookings/[id] — archive (soft delete; the booking stays in the database).
 //
 // PATCH and DELETE return the booking's reference ({ bookingId, invoiceNumber,
-// updatedAt, bookingStatus }) and require `If-Match: <updatedAt>` — the
-// version the user was looking at. Missing → 428; someone else saved since →
-// 412 (nothing changed).
+// updatedAt, bookingStatus }) and require `X-Booking-Version: <updatedAt>` —
+// the version the user was looking at. Missing → 428; someone else saved
+// since → 412 (nothing changed).
 
 import { statusChangeSchema } from "@/lib/domain/booking.schema";
-import { bookingRefOf } from "@/lib/domain/types";
+import { BOOKING_VERSION_HEADER, bookingRefOf } from "@/lib/domain/types";
 import {
   archiveBooking,
   getBooking,
@@ -24,9 +24,9 @@ import { readJsonBody } from "@/lib/server/security/body";
 
 type Params = { id: string };
 
-/** The version the client is changing, from If-Match ("" if absent or malformed). */
+/** The version the client is changing ("" if absent or malformed). */
 function expectedVersion(request: Request): string {
-  const value = request.headers.get("if-match")?.trim().replace(/^"(.*)"$/, "$1") ?? "";
+  const value = request.headers.get(BOOKING_VERSION_HEADER)?.trim() ?? "";
   return value.length <= 64 ? value : "";
 }
 

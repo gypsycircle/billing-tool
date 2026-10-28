@@ -11,10 +11,8 @@ import { PAGE_SIZE, type BookingFilters, type PageInfo } from "@/lib/domain/filt
 import type { LedgerSummary, LedgerTotals } from "@/lib/domain/summary";
 import {
   LEDGER_ROW_FIELDS,
-  SEARCH_HIT_FIELDS,
   type Booking,
   type BookingRef,
-  type BookingSearchHit,
   type LedgerRow,
 } from "@/lib/domain/types";
 import { DuplicateInvoiceNumberError } from "../errors";
@@ -60,7 +58,6 @@ const NO_TOTALS: LedgerTotals = {
 const NO_SUMMARY: LedgerSummary = { activeCount: 0, outstanding: 0, collected: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
 
 const LEDGER_ROW_PROJECTION = projectionOf(LEDGER_ROW_FIELDS);
-const SEARCH_HIT_PROJECTION = projectionOf(SEARCH_HIT_FIELDS);
 
 /** Newest first; the _id tie-breaker keeps pages stable. Served by the status_createdAt_id index. */
 const NEWEST_FIRST = { createdAt: -1, _id: 1 } as const;
@@ -118,16 +115,6 @@ export async function ledgerPage(filters: BookingFilters, today: string, pageSiz
     destinations: destinations.map((d) => d.destination.trim()),
     empty: destinations.length === 0,
   };
-}
-
-/** ⌘K search: the newest few non-archived bookings matching `q` (all of them when q is ""). One query. */
-export async function searchBookings(filters: BookingFilters, today: string, limit: number): Promise<BookingSearchHit[]> {
-  const docs = await (await bookingsCollection())
-    .find(ledgerMatch(filters, today), { projection: SEARCH_HIT_PROJECTION })
-    .sort(NEWEST_FIRST)
-    .limit(limit)
-    .toArray();
-  return docs.map((doc) => pickFromDoc(doc, SEARCH_HIT_FIELDS));
 }
 
 function stripId<T extends { _id: unknown }>(value: T | undefined): Omit<T, "_id"> | undefined {

@@ -27,9 +27,9 @@ import {
 } from "@/lib/domain/booking.schema";
 import { calculateBookingAmounts } from "@/lib/domain/calculations";
 import { defaultDueDate, parseDDMMYYYY, todayIST } from "@/lib/domain/dates";
-import { parseBookingFilters, type BookingFilters } from "@/lib/domain/filters";
+import type { BookingFilters } from "@/lib/domain/filters";
 import { formatInvoiceNumber, nextSequence } from "@/lib/domain/invoice-number";
-import type { Booking, BookingInput, BookingRef, BookingSearchHit, BookingStatus } from "@/lib/domain/types";
+import type { Booking, BookingInput, BookingRef, BookingStatus } from "@/lib/domain/types";
 import {
   checkDatabase,
   findBillBooking,
@@ -40,7 +40,6 @@ import {
   issueInvoiceSequence,
   ledgerPage,
   peekInvoiceSequence,
-  searchBookings as searchBookingsInDb,
   setStatusIfVersion,
   updateBookingIfVersion,
   type DbHealth,
@@ -142,14 +141,6 @@ export async function getLedger(filters: BookingFilters): Promise<LedgerResult> 
   await verifySession();
   return ledgerPage(filters, todayIST());
 }
-
-/** ⌘K search results: a few of the newest non-archived bookings matching `q`. */
-export async function searchBookings(q: string): Promise<BookingSearchHit[]> {
-  await verifySession();
-  return searchBookingsInDb(parseBookingFilters({ q }), todayIST(), SEARCH_LIMIT);
-}
-
-const SEARCH_LIMIT = 8;
 
 /**
  * One booking by its UUID. Throws BookingNotFoundError.
@@ -265,7 +256,7 @@ async function createNewBooking(input: unknown, idempotencyKey?: string): Promis
 /**
  * Updates a booking. The change is merged onto the stored record and the
  * whole result is re-validated, so cross-field rules always hold.
- * `expectedUpdatedAt` is the version the user edited (sent as If-Match).
+ * `expectedUpdatedAt` is the version the user edited (sent as X-Booking-Version).
  */
 export async function updateBooking(id: string, input: unknown, expectedUpdatedAt: string): Promise<Booking> {
   await verifySession();

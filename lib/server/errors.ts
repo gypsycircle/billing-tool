@@ -52,7 +52,7 @@ export class StaleBookingError extends Error {
   }
 }
 
-/** The client didn't say which version it is changing (missing If-Match) — maps to 428. */
+/** The client didn't say which version it is changing (missing X-Booking-Version) — maps to 428. */
 export class MissingVersionError extends Error {
   constructor() {
     super("Reload the booking and try again.");
