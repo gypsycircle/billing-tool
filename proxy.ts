@@ -7,6 +7,7 @@
 //
 // Public surface (no session required):
 //   / (the access page), POST /api/auth/login, POST /api/auth/logout,
+//   the PWA's manifest and service worker (no data in either), and
 //   framework assets. (/access is redirected to / by next.config.ts.)
 // Uses session/token.ts, which has no next/headers or server-only import.
 
@@ -20,6 +21,9 @@ import {
 
 const isProduction = process.env.NODE_ENV === "production";
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Reachable without a session: login/logout (logout must work with a bad cookie) and the PWA files. */
+const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/logout", "/manifest.webmanifest", "/sw.js"]);
 
 // ---------------------------------------------------------------------------
 // Content-Security-Policy
@@ -39,6 +43,10 @@ function buildCsp(nonce: string, upgradeInsecure: boolean): string {
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
+    // The service worker (/sw.js). Without this it would fall back to
+    // script-src, where 'strict-dynamic' ignores 'self' and blocks it.
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -119,10 +127,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return response;
   }
 
-  // Login / logout are always reachable (logout must work with a bad cookie)
-  if (pathname === "/api/auth/login" || pathname === "/api/auth/logout") {
-    return pass();
-  }
+  if (PUBLIC_PATHS.has(pathname)) return pass();
 
   if (session === "valid") return pass();
 

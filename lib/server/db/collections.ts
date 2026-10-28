@@ -139,7 +139,7 @@ const SETTINGS_VALIDATOR: Document = {
 
 async function createIfMissing(name: string, options: Document = {}): Promise<void> {
   try {
-    await getDb().createCollection(name, options);
+    await (await getDb()).createCollection(name, options);
   } catch (err) {
     // 48 = NamespaceExists: already set up by an earlier instance
     if (!(err instanceof MongoServerError && err.code === 48)) throw err;
@@ -147,7 +147,7 @@ async function createIfMissing(name: string, options: Document = {}): Promise<vo
 }
 
 async function setUp(): Promise<void> {
-  const db = getDb();
+  const db = await getDb();
   await Promise.all([
     createIfMissing(NAMES.bookings, { validator: BOOKING_VALIDATOR, validationLevel: "strict", validationAction: "error" }),
     createIfMissing(NAMES.counters),
@@ -190,20 +190,20 @@ export function ensureDatabase(): Promise<void> {
 
 export async function bookingsCollection(): Promise<Collection<BookingDoc>> {
   await ensureDatabase();
-  return getDb().collection<BookingDoc>(NAMES.bookings);
+  return (await getDb()).collection<BookingDoc>(NAMES.bookings);
 }
 
 export async function countersCollection(): Promise<Collection<CounterDoc>> {
   await ensureDatabase();
-  return getDb().collection<CounterDoc>(NAMES.counters);
+  return (await getDb()).collection<CounterDoc>(NAMES.counters);
 }
 
 export async function rateLimitsCollection(): Promise<Collection<RateLimitDoc>> {
   await ensureDatabase();
-  return getDb().collection<RateLimitDoc>(NAMES.rateLimits);
+  return (await getDb()).collection<RateLimitDoc>(NAMES.rateLimits);
 }
 
 export async function settingsCollection(): Promise<Collection<SettingsDoc>> {
   await ensureDatabase();
-  return getDb().collection<SettingsDoc>(NAMES.settings);
+  return (await getDb()).collection<SettingsDoc>(NAMES.settings);
 }

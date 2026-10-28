@@ -88,6 +88,16 @@ npm run test:e2e                                 # terminal 2
 
 ---
 
+## Installing the app (PWA)
+
+The billing tool installs like an app, with its own window and a home-screen icon:
+- **Chrome / Edge (Mac, Windows, Android):** the install icon in the address bar, or ⌘K → **Install app**.
+- **iPhone / iPad (Safari):** Share → **Add to Home Screen**. Sign in once inside the installed app; it keeps its own sign-in, separate from Safari.
+
+Nothing is stored on the device. Bookings always load from the server, and with no connection the app shows a "You're offline" screen. Updates arrive with every deploy, with no reinstall.
+
+---
+
 ## Deploying (Vercel)
 
 - Vercel builds and deploys **`main` only**; preview deployments are off (`vercel.json`), so no preview can touch the real database. Functions run in Mumbai (`bom1`), next to the Atlas cluster. Node 22.

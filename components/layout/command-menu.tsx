@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { defaultFilter } from "cmdk";
-import { BookOpen, FileText, LogOut, Plus, Search } from "lucide-react";
+import { BookOpen, Download, FileText, LogOut, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -28,6 +28,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { THEME_OPTIONS } from "@/components/layout/theme-toggle";
 import { useHotkey } from "@/hooks/use-hotkey";
+import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { useLogout } from "@/hooks/use-logout";
 import { apiFetch } from "@/lib/client/api-client";
 import type { BookingSearchHit } from "@/lib/domain/types";
@@ -42,6 +43,7 @@ export function CommandMenu() {
   const router = useRouter();
   const { setTheme } = useTheme();
   const { logout } = useLogout();
+  const { canInstall, install } = useInstallPrompt();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [bookings, setBookings] = useState<BookingSearchHit[] | null>(null);
@@ -140,6 +142,17 @@ export function CommandMenu() {
                 </CommandItem>
               ))}
             </CommandGroup>
+            {canInstall && (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="App">
+                  <CommandItem onSelect={() => run(() => void install())}>
+                    <Download />
+                    Install app
+                  </CommandItem>
+                </CommandGroup>
+              </>
+            )}
             <CommandSeparator />
             <CommandGroup heading="Session">
               <CommandItem onSelect={() => run(() => void logout())}>

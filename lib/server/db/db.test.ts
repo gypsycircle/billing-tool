@@ -27,8 +27,8 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  const { getMongoClient } = await import("./client");
-  await getMongoClient().close();
+  const { closeMongoClient } = await import("./client");
+  await closeMongoClient();
   await server.stop();
 });
 
@@ -36,7 +36,8 @@ async function clear() {
   const { getDb } = await import("./client");
   const { ensureDatabase } = await import("./collections");
   await ensureDatabase();
-  await Promise.all(["bookings", "counters", "rate_limits", "settings"].map((name) => getDb().collection(name).deleteMany({})));
+  const db = await getDb();
+  await Promise.all(["bookings", "counters", "rate_limits", "settings"].map((name) => db.collection(name).deleteMany({})));
 }
 
 beforeEach(clear);

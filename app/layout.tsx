@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import appleTouchIcon from "@/components/brand/app-icons/apple-touch-icon.png";
 import { Providers } from "@/components/providers";
+import { ServiceWorker } from "@/components/pwa/service-worker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +31,10 @@ export const metadata: Metadata = {
   },
   description: "Private billing and invoice management tool for GypsyCircle.",
   robots: { index: false, follow: false },
+  // Installable app (PWA): app/manifest.ts, plus what iPhone's "Add to Home Screen" reads
+  applicationName: "GypsyCircle Billing",
+  appleWebApp: { capable: true, title: "GC Billing", statusBarStyle: "default" },
+  icons: { apple: appleTouchIcon.src },
 };
 
 export const viewport: Viewport = {
@@ -52,6 +58,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <Providers nonce={nonce}>{children}</Providers>
+        <ServiceWorker />
       </body>
     </html>
   );
