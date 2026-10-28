@@ -1,0 +1,14 @@
+# private-templates/ holds what the Bill of Supply PDF embeds. It sits OUTSIDE
+# public/ so nothing here is ever served by URL; the PDF route reads it from
+# disk after the session check. These files ARE committed (production builds
+# bundle them via next.config.ts). They contain no customer data.
+#
+#   fonts/src/            the app's variable fonts, Geist and Fraunces (Google Fonts)
+#   fonts/latin/          what the bill embeds: static Latin instances
+#                         (scripts/pdf/build_assets.py)
+#   fonts/OFL-*.txt       the fonts' licences (SIL Open Font License 1.1)
+#   images/logo.png       the top bar's logo at 900 px in the brand teal
+#                         (build_assets.py --logo, from the full-size original)
+#   images/upi-qr.png     the UPI payment QR code, cut from the "Scan me" card
+#                         (build_assets.py --qr docs/sample_qrcode.jpeg)
+#   images/upi-apps.png   the PhonePe / GPay / Paytm / UPI logo strip
