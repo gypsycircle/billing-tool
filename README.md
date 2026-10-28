@@ -93,10 +93,10 @@ npm run test:e2e                                 # terminal 2
 - Vercel builds and deploys **`main` only**; preview deployments are off (`vercel.json`), so no preview can touch the real database. Functions run in Mumbai (`bom1`), next to the Atlas cluster. Node 22.
 - Environment variables (**Production only**):
   - `SESSION_SECRET`: a new value, not the local one;
-  - `MONGODB_URI`: a production Atlas user with `readWrite` on `gypsycircle_billing` only;
-  - `MONGODB_DB`, `INITIAL_INVOICE_NUMBER`;
+  - `MONGODB_URI`: a production Atlas user with `readWrite` on the production database only;
+  - `MONGODB_DB=gypsycircle_billing_prod` (local `.env.local` keeps the default `gypsycircle_billing` as the dev database), `INITIAL_INVOICE_NUMBER`;
   - `APP_URL`: the exact live address.
-- The access code is already in the database (hashed), so there's nothing to set for it in Vercel.
+- The access code lives in each database (hashed); set it for production with `MONGODB_DB=gypsycircle_billing_prod node --env-file=.env.local scripts/set-access-code.mjs`. Nothing to set for it in Vercel.
 - Atlas Network Access must allow Vercel (`0.0.0.0/0`, or the Vercel–Atlas integration).
 - After a deploy:
   - sign in, then open `/api/health` (it should say `healthy` and `accessCodeSet: true`);
