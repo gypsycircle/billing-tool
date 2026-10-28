@@ -70,6 +70,7 @@ export function summaryGroup(today: string): Document[] {
       $group: {
         _id: null,
         activeCount: { $sum: 1 },
+        activeTravellers: { $sum: "$travellers" },
         outstanding: { $sum: "$balanceAmount" },
         collected: { $sum: "$amountPaid" },
         overdueCount: { $sum: { $cond: [overdue, 1, 0] } },

@@ -51,7 +51,16 @@ export default async function DashboardPage({ searchParams }: PageProps<"/bookin
           hint={summary.overdueCount > 0 ? `${plural(summary.overdueCount, "booking")} overdue` : "Nothing overdue"}
         />
         <Stat label="Collected" value={<Money amount={summary.collected} />} hint="Received on active bookings" />
-        <Stat label="Active bookings" value={summary.activeCount} hint="Cancelled and archived excluded" />
+        <Stat
+          label="Active bookings"
+          value={
+            <>
+              {summary.activeCount}{" "}
+              <span className="text-base font-normal text-muted-foreground">({summary.activeTravellers} pax)</span>
+            </>
+          }
+          hint="Cancelled and archived excluded"
+        />
         <Stat
           label="Due in 7 days"
           value={<Money amount={summary.dueSoonAmount} />}

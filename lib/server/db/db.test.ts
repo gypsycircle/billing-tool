@@ -199,7 +199,7 @@ describe("ledgerPage pages and summary", () => {
       due("14/01/2026", { bookingStatus: "Archived" }),
     ]);
     expect((await ledger({}, "15/01/2026")).summary).toEqual({
-      activeCount: 5, outstanding: 24_000, collected: 26_000, dueSoonCount: 2, dueSoonAmount: 12_000, overdueCount: 1,
+      activeCount: 5, activeTravellers: 10, outstanding: 24_000, collected: 26_000, dueSoonCount: 2, dueSoonAmount: 12_000, overdueCount: 1,
     });
   });
 });

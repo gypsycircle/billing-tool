@@ -9,7 +9,7 @@ import { BOOKING_STATUSES, PAYMENT_STATUSES, type Booking } from "./types";
 const DUE_FILTERS = ["overdue", "week"] as const satisfies readonly DueBucket[];
 
 /** Bookings per ledger page. */
-export const PAGE_SIZE = 25;
+export const PAGE_SIZE = 15;
 
 const param = z
   .union([z.string(), z.array(z.string())])

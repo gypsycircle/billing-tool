@@ -55,7 +55,7 @@ export interface LedgerResult extends PageInfo {
 const NO_TOTALS: LedgerTotals = {
   count: 0, total: 0, received: 0, balance: 0, activeCount: 0, activeTotal: 0, activeReceived: 0, activeBalance: 0,
 };
-const NO_SUMMARY: LedgerSummary = { activeCount: 0, outstanding: 0, collected: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
+const NO_SUMMARY: LedgerSummary = { activeCount: 0, activeTravellers: 0, outstanding: 0, collected: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
 
 const LEDGER_ROW_PROJECTION = projectionOf(LEDGER_ROW_FIELDS);
 

@@ -4,6 +4,8 @@
 
 export interface LedgerSummary {
   activeCount: number;
+  /** Total travellers (pax) across the active bookings. */
+  activeTravellers: number;
   /** Sum of balances still owed. */
   outstanding: number;
   /** Sum of amounts received so far. */
