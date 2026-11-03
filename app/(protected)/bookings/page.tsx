@@ -19,6 +19,7 @@ import { routes } from "@/lib/domain/routes";
 import { SHORTCUTS } from "@/lib/domain/shortcuts";
 import { plural } from "@/lib/domain/words";
 import { getBookingLedger } from "@/lib/server/bookings/service";
+import { getGeneralFilterOptions } from "@/lib/server/general/service";
 import { getTeamFilterOptions } from "@/lib/server/team/service";
 
 export const metadata: Metadata = { title: "Bookings" };
@@ -26,9 +27,9 @@ export const metadata: Metadata = { title: "Bookings" };
 
 export default async function BookingsPage({ searchParams }: PageProps<"/bookings">) {
   const filters = parseBookingFilters(await searchParams);
-  // One page of the ledger, its totals, the summary figures and the destination
-  // list, all from the database in parallel
-  const [ledger, team] = await Promise.all([getBookingLedger(filters), getTeamFilterOptions()]);
+  // One page of the ledger, its totals and the summary figures, plus the filters'
+  // choices from Settings, all from the database in parallel
+  const [ledger, destinations, team] = await Promise.all([getBookingLedger(filters), getGeneralFilterOptions("destination"), getTeamFilterOptions()]);
   const { summary } = ledger;
   const today = todayIST();
   // The archived view with nothing else narrowing it
@@ -92,7 +93,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/booking
             />
           )
         }
-        filters={<BookingFilters destinations={ledger.destinations} tripDatePresets={tripDatePresets(today)} today={today} team={team} />}
+        filters={<BookingFilters destinations={destinations} tripDatePresets={tripDatePresets(today)} today={today} team={team} />}
         table={<LedgerTable bookings={ledger.items} totals={ledger.totals} archived={filters.archived} />}
         noMatches={<NoMatches plural="bookings" listHref={routes.bookings.list} archivedOnly={onlyArchivedView} filtered={hasActiveFilters(filters)} />}
         page={ledger}

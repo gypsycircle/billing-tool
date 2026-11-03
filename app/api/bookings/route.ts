@@ -2,7 +2,7 @@
 // GET  /api/bookings — one page of the ledger for the ledger's filters (?q, destination,
 //                      payment, status, archived=1, due, from / to (trip start,
 //                      YYYY-MM-DD), booked (invoice date, YYYY-MM-DD), page): { items, count and totals
-//                      of every match, summary figures, destinations }.
+//                      of every match, summary figures }.
 // POST /api/bookings — create a booking; answers its reference (201).
 //
 // Creates honour an `Idempotency-Key` header: a retry or double submit gets

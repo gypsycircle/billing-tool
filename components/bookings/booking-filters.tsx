@@ -27,7 +27,8 @@ export function BookingFilters({
   today,
   team,
 }: {
-  destinations: string[];
+  /** The Settings list (name → label). */
+  destinations: Readonly<Record<string, string>>;
   tripDatePresets: readonly DatePreset[];
   today: string;
   team: Readonly<Record<string, string>>;
@@ -51,7 +52,7 @@ export function BookingFilters({
         />
       }
     >
-      {destinations.length > 0 && (
+      {Object.keys(destinations).length > 0 && (
         <FilterSelect
           label="Destination"
           allLabel="All destinations"

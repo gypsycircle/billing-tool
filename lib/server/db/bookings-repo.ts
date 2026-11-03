@@ -20,7 +20,7 @@ import { isDuplicateKey } from "./duplicate-key";
 import { BILL_FIELDS, type BillBooking } from "../pdf/content";
 import { bookingsCollection, settingsCollection, type BookingDoc, type BookingHistoryDoc, type PaymentDoc } from "./collections";
 import { BOOKING_PROJECTION, bookingReads, bookingUpdateSet, fromBookingDoc, toBookingDoc } from "./mapping";
-import { destinationsGroup, ledgerHint, ledgerMatch, matchingGroup, summaryGroup } from "./ledger-query";
+import { ledgerHint, ledgerMatch, matchingGroup, summaryGroup } from "./ledger-query";
 import { clampPage, requestedPage, stripId } from "./paging";
 import { insertHistory } from "./history-repo";
 import { insertPayment } from "./payments-repo";
@@ -52,7 +52,6 @@ export interface LedgerResult extends PageInfo {
   items: LedgerRow[];
   totals: LedgerTotals;
   summary: LedgerSummary;
-  destinations: string[];
   /** True when there are no bookings at all (empty ledger, not "no matches"). */
   empty: boolean;
 }
@@ -85,9 +84,8 @@ async function pageItems(filters: BookingFilters, match: Filter<BookingDoc>, ski
 /**
  * Everything the dashboard needs, as four small index-backed queries run in
  * PARALLEL (one round trip of waiting): the page of rows, the count and totals
- * of all matches, the summary tiles and the destination list. Every booking
- * has a destination (it is required), so an empty destination list means an
- * empty ledger. A page past the end costs one more query for the last page.
+ * of all matches, the summary tiles and whether any booking exists. A page
+ * past the end costs one more query for the last page.
  */
 export async function ledgerPage(filters: BookingFilters, today: string, pageSize = PAGE_SIZE): Promise<LedgerResult> {
   const collection = await bookingsCollection();
@@ -95,11 +93,11 @@ export async function ledgerPage(filters: BookingFilters, today: string, pageSiz
   const page = requestedPage(filters.page);
   const fetchPage = (p: number) => pageItems(filters, match, (p - 1) * pageSize, pageSize);
 
-  const [firstItems, matching, summary, destinations] = await Promise.all([
+  const [firstItems, matching, summary, any] = await Promise.all([
     fetchPage(page),
     collection.aggregate<Grouped<LedgerTotals>>([{ $match: match }, ...matchingGroup]).toArray(),
     collection.aggregate<Grouped<LedgerSummary>>(summaryGroup(today)).toArray(),
-    collection.aggregate<{ _id: string; destination: string }>(destinationsGroup).toArray(),
+    collection.findOne({}, { projection: { _id: 1 } }),
   ]);
 
   const totals = { ...NO_TOTALS, ...stripId(matching[0]) };
@@ -107,8 +105,7 @@ export async function ledgerPage(filters: BookingFilters, today: string, pageSiz
     ...(await clampPage(page, pageSize, firstItems, totals.count, fetchPage)),
     totals,
     summary: { ...NO_SUMMARY, ...stripId(summary[0]) },
-    destinations: destinations.map((d) => d.destination.trim()),
-    empty: destinations.length === 0,
+    empty: any === null,
   };
 }
 

@@ -126,16 +126,3 @@ export const matchingGroup: Document[] = [
     },
   },
 ];
-
-/**
- * Distinct destinations for the filter menu (all bookings), alphabetical.
- * Sorting on the destinationKey_destination index before grouping lets
- * MongoDB jump from one destination to the next in the index (DISTINCT_SCAN)
- * instead of reading every booking.
- */
-export const destinationsGroup: Document[] = [
-  { $match: { destinationKey: { $gt: "" } } },
-  { $sort: { destinationKey: 1 } },
-  { $group: { _id: "$destinationKey", destination: { $first: "$destination" } } },
-  { $sort: { _id: 1 } },
-];

@@ -86,11 +86,6 @@ describe("ledgerPage", () => {
     expect((await ledger({ archived: "1" })).totals).toMatchObject({ count: 1, total: 2_000, activeCount: 0 });
   });
 
-  it("lists each destination once (any case), alphabetically, from every booking", async () => {
-    await seed([booking({ bookingId: "e", invoiceNumber: "INV_20260151", destination: "goa " })]);
-    expect((await ledger({ q: "nothing matches this" })).destinations).toEqual(["Delhi", "Goa"]);
-  });
-
   it("returns only the columns the ledger shows", async () => {
     const [row] = (await ledger({})).items;
     expect(Object.keys(row).sort()).toEqual([...LEDGER_ROW_FIELDS].sort());
@@ -225,15 +220,6 @@ describe("query plans", () => {
 
   it("uses an index for the due filter", async () => {
     expect(await pagePlan({ due: "overdue" })).not.toContain("COLLSCAN");
-  });
-
-  it("builds the destination list from the index alone", async () => {
-    const { bookingsCollection } = await import("./collections");
-    const { destinationsGroup } = await import("./ledger-query");
-    const plan = await (await bookingsCollection()).aggregate(destinationsGroup).explain("queryPlanner");
-    const stages = stagesOf(plan);
-    expect(stages).toContain("DISTINCT_SCAN");
-    expect(stages).not.toContain("COLLSCAN");
   });
 });
 
@@ -985,5 +971,34 @@ describe("the Closed by filter", () => {
       [zoya.id, "Zoya"],
       [asha.id, "Asha · Archived"],
     ]);
+  });
+});
+
+describe("the Destination filter's choices", () => {
+  it("come from the Settings list, not from bookings: active first, then archived", async () => {
+    const { archiveGeneralItem, createGeneralItem, getGeneralFilterOptions, getGeneralItem } = await import("../general/service");
+    await seed([booking({ bookingId: "e", invoiceNumber: "INV_20260151", destination: "Not In The List" })]);
+    await createGeneralItem({ kind: "destination", name: "Goa" });
+    const old = await createGeneralItem({ kind: "destination", name: "Agra" });
+    await archiveGeneralItem(old.id, (await getGeneralItem(old.id)).updatedAt);
+    await createGeneralItem({ kind: "package", name: "Not A Destination" });
+    expect(Object.entries(await getGeneralFilterOptions("destination"))).toEqual([
+      ["Delhi", "Delhi"],
+      ["Goa", "Goa"],
+      ["Agra", "Agra · Archived"],
+    ]);
+  });
+
+  it("find bookings whatever their spelling", async () => {
+    const { getBookingLedger } = await import("../bookings/service");
+    await seed([booking({ bookingId: "e", invoiceNumber: "INV_20260151", destination: "goa " })]);
+    expect((await getBookingLedger(parseBookingFilters({ destination: "Goa" }))).items.map((r) => r.bookingId)).toEqual(["e"]);
+  });
+
+  it("leave the ledger's empty state to whether any booking exists", async () => {
+    const { getBookingLedger } = await import("../bookings/service");
+    expect((await getBookingLedger(parseBookingFilters({}))).empty).toBe(true);
+    await seed([booking({ bookingId: "e", bookingStatus: "Archived" })]);
+    expect((await getBookingLedger(parseBookingFilters({ q: "nothing matches this" }))).empty).toBe(false);
   });
 });

@@ -396,8 +396,6 @@ async function setUp(): Promise<void> {
       { key: { bookingStatus: 1, tripStartDate: 1, totalAmount: 1 }, name: "status_tripStart_total" },
       // The destination filter
       { key: { bookingStatus: 1, destinationKey: 1, createdAt: -1, _id: 1 }, name: "status_destination_createdAt_id" },
-      // The destination list: one index entry per destination, no documents read
-      { key: { destinationKey: 1, destination: 1 }, name: "destinationKey_destination" },
       idempotent,
     ]),
     db.collection<RateLimitDoc>(NAMES.rateLimits).createIndexes([

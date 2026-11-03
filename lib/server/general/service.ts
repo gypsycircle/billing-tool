@@ -10,6 +10,7 @@ import type { PageInfo } from "@/lib/domain/filters";
 import { GENERAL_KIND_IDS, type GeneralItem, type GeneralKind } from "@/lib/domain/general";
 import { generalItemDraftSchema, generalItemIdSchema, generalNameSchema, updateGeneralItemSchema } from "@/lib/domain/general.schema";
 import type { NamedOption } from "@/lib/domain/named-records";
+import { isArchived } from "@/lib/domain/records";
 import { generalRepo } from "../db/general-repo";
 import { ValidationError } from "../errors";
 import { verifySession } from "../guards";
@@ -62,6 +63,16 @@ export async function getGeneralActiveCounts(): Promise<Record<GeneralKind, numb
 export async function getGeneralOptions(kind: GeneralKind): Promise<NamedOption[]> {
   await verifySession();
   return generalRepo.options({ kind });
+}
+
+/**
+ * A list filter's choices, by the name records store (name → label): the whole
+ * list, active first and then archived (marked), so older records can still be found.
+ */
+export async function getGeneralFilterOptions(kind: GeneralKind): Promise<Record<string, string>> {
+  await verifySession();
+  const items = await generalRepo.list({ kind });
+  return Object.fromEntries(items.map((item) => [item.name, isArchived(item) ? `${item.name} · Archived` : item.name]));
 }
 
 /**
