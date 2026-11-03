@@ -36,7 +36,8 @@ export function useHotkey(
     if (!enabled) return;
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key.toLowerCase() !== key.toLowerCase() || event.repeat) return;
+      // Browser autofill fires keydown events with no key.
+      if (typeof event.key !== "string" || event.key.toLowerCase() !== key.toLowerCase() || event.repeat) return;
 
       const hasMod = event.metaKey || event.ctrlKey;
       if (mod ? !hasMod : hasMod || event.altKey || isTyping(event.target)) return;

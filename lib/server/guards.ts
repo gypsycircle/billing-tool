@@ -5,6 +5,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { routes } from "@/lib/domain/routes";
 import { hasValidSession } from "./session/cookies";
 import { UnauthorizedError } from "./errors";
 
@@ -15,5 +16,5 @@ export async function verifySession(): Promise<void> {
 
 /** Page guard: redirects to the access page (/) when there is no valid session. */
 export async function requireSessionOrRedirect(): Promise<void> {
-  if (!(await hasValidSession())) redirect("/");
+  if (!(await hasValidSession())) redirect(routes.access);
 }

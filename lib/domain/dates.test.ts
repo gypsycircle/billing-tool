@@ -8,7 +8,7 @@ import {
   fromISODate,
   isValidDDMMYYYY,
   toISODate,
-  todayIST,
+  todayIST, rangeLabel,
 } from "./dates";
 
 describe("isValidDDMMYYYY", () => {
@@ -95,5 +95,13 @@ describe("formatTimestampIST", () => {
   it("is empty for a missing or invalid timestamp", () => {
     expect(formatTimestampIST("")).toBe("");
     expect(formatTimestampIST("not a date")).toBe("");
+  });
+});
+
+describe("rangeLabel", () => {
+  it("is as short as the dates allow", () => {
+    expect(rangeLabel("29/10/2026", "29/10/2026")).toBe("29 Oct 2026");
+    expect(rangeLabel("01/09/2026", "30/09/2026")).toBe("1 Sep – 30 Sep 2026");
+    expect(rangeLabel("01/12/2025", "31/01/2026")).toBe("1 Dec 2025 – 31 Jan 2026");
   });
 });

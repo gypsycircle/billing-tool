@@ -1,21 +1,32 @@
 // lib/server/db/mapping.ts
-// Booking (domain: DD/MM/YYYY strings, ISO timestamps) ↔ BookingDoc (BSON
-// dates). The only place the two shapes meet; everything above the
-// repository works with the domain Booking.
+// Domain records (DD/MM/YYYY strings, ISO timestamps) ↔ stored documents
+// (BSON dates): Booking ↔ BookingDoc, Expense ↔ ExpenseDoc, and team members
+// and list items. The only place the two shapes meet; everything above the
+// repositories works with the domain types.
 
 import "server-only";
 
 import { getYear } from "date-fns";
 import type { Document } from "mongodb";
 import { formatDDMMYYYY, parseDDMMYYYY } from "@/lib/domain/dates";
+import type { Expense } from "@/lib/domain/expenses";
+import type { GeneralItem } from "@/lib/domain/general";
+import { nameKeyOf, type NamedRecord } from "@/lib/domain/named-records";
+import type { TeamMember } from "@/lib/domain/team";
 import type { Booking } from "@/lib/domain/types";
-import type { BookingDoc } from "./collections";
+import type { BookingDoc, ExpenseDoc, GeneralItemDoc, NamedDoc, TeamMemberDoc } from "./collections";
 
 /** A DD/MM/YYYY date as a UTC-midnight Date. Throws on an invalid date (callers validate first). */
 export function toDate(value: string): Date {
   const date = parseDDMMYYYY(value);
   if (!date) throw new Error("Invalid DD/MM/YYYY date");
   return date;
+}
+
+/** A date-range filter ({ from, to }, DD/MM/YYYY, "" open) as a query on a stored date; null when both ends are open. */
+export function withinDays({ from, to }: { from: string; to: string }): { $gte?: Date; $lte?: Date } | null {
+  if (!from && !to) return null;
+  return { ...(from ? { $gte: toDate(from) } : {}), ...(to ? { $lte: toDate(to) } : {}) };
 }
 
 export const digitsOf = (value: string) => value.replace(/\D/g, "");
@@ -54,6 +65,11 @@ export function toBookingDoc(booking: Booking, idempotencyKey?: string): Booking
     bookingStatus: booking.bookingStatus,
     invoiceNote: booking.invoiceNote,
     internalNotes: booking.internalNotes,
+    slotAmount: booking.slotAmount,
+    cancelledOn: booking.cancelledOn ? toDate(booking.cancelledOn) : null,
+    refundAmount: booking.refundAmount,
+    refundedOn: booking.refundedOn ? toDate(booking.refundedOn) : null,
+    ...(booking.closedBy ? { closedBy: booking.closedBy } : {}),
     ...(idempotencyKey ? { idempotencyKey } : {}),
   };
 }
@@ -87,6 +103,11 @@ export function fromBookingDoc(doc: BookingDoc): Booking {
     bookingStatus: doc.bookingStatus,
     invoiceNote: doc.invoiceNote,
     internalNotes: doc.internalNotes,
+    slotAmount: doc.slotAmount ?? 0,
+    cancelledOn: doc.cancelledOn ? formatDDMMYYYY(doc.cancelledOn) : null,
+    refundAmount: doc.refundAmount ?? 0,
+    refundedOn: doc.refundedOn ? formatDDMMYYYY(doc.refundedOn) : null,
+    closedBy: doc.closedBy ?? null,
   };
 }
 
@@ -98,26 +119,42 @@ export const BOOKING_PROJECTION = {
   idempotencyKey: 0,
 } as const satisfies Document;
 
-const CALENDAR_DATES = new Set<keyof Booking>(["invoiceDate", "dueDate", "tripStartDate", "tripEndDate"]);
-const TIMESTAMPS = new Set<keyof Booking>(["createdAt", "updatedAt"]);
-
-/** A projection that fetches only `fields` (bookingId is the document's _id). */
-export function projectionOf(fields: readonly (keyof Booking)[]): Document {
-  return Object.fromEntries(fields.map((field) => [field === "bookingId" ? "_id" : field, 1]));
+/**
+ * Partial reads of one record type: `projectionOf(fields)` fetches only those
+ * fields (the record's ID field is the document's _id), and `pickFromDoc`
+ * turns the fetched document into those domain fields (dates to DD/MM/YYYY,
+ * timestamps to ISO).
+ */
+function partialReads<Domain extends object, Doc extends { _id: string }>(
+  idField: keyof Domain,
+  calendarDates: readonly (keyof Domain)[],
+  timestamps: readonly (keyof Domain)[]
+) {
+  const calendar = new Set(calendarDates);
+  const stamps = new Set(timestamps);
+  return {
+    projectionOf(fields: readonly (keyof Domain)[]): Document {
+      return Object.fromEntries(fields.map((field) => [field === idField ? "_id" : field, 1]));
+    },
+    pickFromDoc<K extends keyof Domain>(doc: Partial<Doc>, fields: readonly K[]): Pick<Domain, K> {
+      const picked: Partial<Record<keyof Domain, unknown>> = {};
+      for (const field of fields) {
+        const value = field === idField ? doc._id : doc[field as unknown as keyof Doc];
+        picked[field] =
+          calendar.has(field) ? (value ? formatDDMMYYYY(value as unknown as Date) : null)
+          : stamps.has(field) ? (value as Date).toISOString()
+          : value;
+      }
+      return picked as Pick<Domain, K>;
+    },
+  };
 }
 
-/** The `fields` of a document fetched with projectionOf(fields), in domain form. */
-export function pickFromDoc<K extends keyof Booking>(doc: Partial<BookingDoc>, fields: readonly K[]): Pick<Booking, K> {
-  const picked: Partial<Record<keyof Booking, unknown>> = {};
-  for (const field of fields) {
-    const value = field === "bookingId" ? doc._id : doc[field as keyof BookingDoc];
-    picked[field] =
-      CALENDAR_DATES.has(field) ? formatDDMMYYYY(value as Date)
-      : TIMESTAMPS.has(field) ? (value as Date).toISOString()
-      : value;
-  }
-  return picked as Pick<Booking, K>;
-}
+export const bookingReads = partialReads<Booking, BookingDoc>(
+  "bookingId",
+  ["invoiceDate", "dueDate", "tripStartDate", "tripEndDate", "cancelledOn", "refundedOn"],
+  ["createdAt", "updatedAt"]
+);
 
 /** The editable fields of a booking as a $set update (derived fields included). */
 export function bookingUpdateSet(booking: Booking): Partial<BookingDoc> {
@@ -125,3 +162,82 @@ export function bookingUpdateSet(booking: Booking): Partial<BookingDoc> {
   void _id; void invoiceNumber; void invoiceYear; void createdAt; void idempotencyKey;
   return rest;
 }
+
+// ── Expenses ──────────────────────────────────────────────────────────────
+
+export function toExpenseDoc(expense: Expense, idempotencyKey?: string): ExpenseDoc {
+  const expenseDate = toDate(expense.expenseDate);
+  return {
+    _id: expense.expenseId,
+    expenseNumber: expense.expenseNumber,
+    expenseYear: getYear(expenseDate),
+    expenseType: expense.expenseType,
+    expenseKind: expense.expenseKind,
+    amount: expense.amount,
+    expenseDate,
+    ...(expense.paidFor ? { paidFor: expense.paidFor } : {}),
+    note: expense.note,
+    status: expense.status,
+    createdAt: new Date(expense.createdAt),
+    updatedAt: new Date(expense.updatedAt),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  };
+}
+
+export function fromExpenseDoc(doc: ExpenseDoc): Expense {
+  return {
+    expenseId: doc._id,
+    expenseNumber: doc.expenseNumber,
+    expenseType: doc.expenseType,
+    expenseKind: doc.expenseKind,
+    amount: doc.amount,
+    expenseDate: formatDDMMYYYY(doc.expenseDate),
+    paidFor: doc.paidFor ?? null,
+    note: doc.note,
+    status: doc.status,
+    createdAt: doc.createdAt.toISOString(),
+    updatedAt: doc.updatedAt.toISOString(),
+  };
+}
+
+/** A full expense read: everything but the storage-only fields. */
+export const EXPENSE_PROJECTION = { expenseYear: 0, idempotencyKey: 0 } as const satisfies Document;
+
+export const expenseReads = partialReads<Expense, ExpenseDoc>("expenseId", ["expenseDate"], ["createdAt", "updatedAt"]);
+
+/** The editable fields of an expense as a $set update (its kind follows its type). */
+export function expenseUpdateSet(expense: Expense): Pick<ExpenseDoc, "expenseType" | "expenseKind" | "amount" | "expenseDate" | "paidFor" | "note" | "updatedAt"> {
+  const { expenseType, expenseKind, amount, expenseDate, paidFor, note, updatedAt } = toExpenseDoc(expense);
+  return { expenseType, expenseKind, amount, expenseDate, paidFor, note, updatedAt };
+}
+
+// ── Team members and list items ───────────────────────────────────────────
+
+function toNamedDoc(record: NamedRecord, idempotencyKey?: string): NamedDoc {
+  return {
+    _id: record.id,
+    name: record.name,
+    nameKey: nameKeyOf(record.name),
+    status: record.status,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt),
+    ...(idempotencyKey ? { idempotencyKey } : {}),
+  };
+}
+
+function fromNamedDoc(doc: NamedDoc): NamedRecord {
+  return { id: doc._id, name: doc.name, status: doc.status, createdAt: doc.createdAt.toISOString(), updatedAt: doc.updatedAt.toISOString() };
+}
+
+export const toTeamMemberDoc = (member: TeamMember, idempotencyKey?: string): TeamMemberDoc => ({
+  ...toNamedDoc(member, idempotencyKey),
+  role: member.role,
+  phone: member.phone,
+});
+export const fromTeamMemberDoc = (doc: TeamMemberDoc): TeamMember => ({ ...fromNamedDoc(doc), role: doc.role, phone: doc.phone });
+
+export const toGeneralItemDoc = (item: GeneralItem, idempotencyKey?: string): GeneralItemDoc => ({
+  ...toNamedDoc(item, idempotencyKey),
+  kind: item.kind,
+});
+export const fromGeneralItemDoc = (doc: GeneralItemDoc): GeneralItem => ({ ...fromNamedDoc(doc), kind: doc.kind });

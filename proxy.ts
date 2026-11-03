@@ -9,10 +9,12 @@
 //   / (the access page), POST /api/auth/login, POST /api/auth/logout,
 //   the PWA's manifest and service worker (no data in either), and
 //   framework assets. (/access is redirected to / by next.config.ts.)
-// Uses session/token.ts, which has no next/headers or server-only import.
+// Uses session/token.ts, which has no next/headers or server-only import, and
+// the pure lib/domain/safe-redirect.ts.
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { safeRedirectPath } from "@/lib/domain/safe-redirect";
 import {
   getSessionCookieName,
   getSessionCookieOptions,
@@ -114,13 +116,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // ── 3. Session check ──────────────────────────────────────────────────
   const session = await sessionState(request);
 
-  // The access page at "/" (exactly): signed-in users go to the bookings ledger
+  // The access page at "/" (exactly): signed-in users go on to the page they
+  // were sent here from (`next`, checked by safeRedirectPath), or the bookings list
   if (pathname === "/") {
     if (session === "valid") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/bookings";
-      url.search = "";
-      return finish(NextResponse.redirect(url));
+      const target = safeRedirectPath(request.nextUrl.searchParams.get("next"));
+      return finish(NextResponse.redirect(new URL(target, request.nextUrl.origin)));
     }
     const response = pass();
     if (session === "invalid") clearSessionCookie(response);

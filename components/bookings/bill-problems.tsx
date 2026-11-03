@@ -4,6 +4,7 @@
 // app refuses values that don't fit.
 
 import Link from "next/link";
+import { routes } from "@/lib/domain/routes";
 import { FileWarning, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -34,7 +35,7 @@ export function BillProblems({ bookingId, problems }: BillProblemsProps) {
         size="sm"
         className="self-start bg-card sm:self-center"
         nativeButton={false}
-        render={<Link href={`/bookings/${bookingId}/edit`} />}
+        render={<Link href={routes.bookings.edit(bookingId)} />}
       >
         <Pencil />
         Fix in edit

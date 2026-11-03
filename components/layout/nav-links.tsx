@@ -6,11 +6,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { routes } from "@/lib/domain/routes";
 import { cn } from "@/lib/utils";
 
+// Each section's page and everything under it ("New booking" / "Add expense"
+// are buttons on their pages, in ⌘K and on the B / E keys)
+const section = (href: string) => (path: string) => path === href || path.startsWith(`${href}/`);
 const NAV_ITEMS = [
-  { href: "/bookings", label: "Bookings", match: (path: string) => path === "/bookings" || /^\/bookings\/(?!new)/.test(path) },
-  { href: "/bookings/new", label: "New booking", match: (path: string) => path === "/bookings/new" },
+  { href: routes.bookings.list, label: "Bookings", match: section(routes.bookings.list) },
+  { href: routes.expenses.list, label: "Expenses", match: section(routes.expenses.list) },
+  { href: routes.settings.page, label: "Settings", match: section(routes.settings.page) },
 ] as const;
 
 export function NavLinks() {

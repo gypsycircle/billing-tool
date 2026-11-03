@@ -3,6 +3,7 @@
 // are sent to the access page (/) by proxy.ts first, so only signed-in users see this.
 
 import Link from "next/link";
+import { routes } from "@/lib/domain/routes";
 import { Button } from "@/components/ui/button";
 import { StatusPage } from "@/components/shared/status-page";
 
@@ -13,7 +14,7 @@ export default function NotFound() {
       title="This page isn't in the ledger"
       description="The link may be mistyped, or the booking may have been archived."
       actions={
-        <Button nativeButton={false} render={<Link href="/bookings" />}>
+        <Button nativeButton={false} render={<Link href={routes.bookings.list} />}>
           Back to bookings
         </Button>
       }

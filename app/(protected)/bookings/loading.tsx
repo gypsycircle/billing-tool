@@ -4,5 +4,5 @@
 import { LedgerSkeleton } from "@/components/shared/page-skeletons";
 
 export default function Loading() {
-  return <LedgerSkeleton />;
+  return <LedgerSkeleton tiles={4} label="Loading bookings" />;
 }

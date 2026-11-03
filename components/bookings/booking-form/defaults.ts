@@ -12,8 +12,8 @@ export type BookingFormInput = z.input<typeof bookingDraftSchema>;
 export type BookingFormValues = z.output<typeof bookingDraftSchema>;
 
 /**
- * The invoice number and dates, shown read-only: the server assigns them.
- * For a new booking the number is the expected one and the due date is "".
+ * The invoice number and dates. For a new booking the number is the expected
+ * one, the date is today and the due date is "".
  */
 export interface InvoiceInfo {
   number: string;
@@ -21,9 +21,11 @@ export interface InvoiceInfo {
   dueDate: string;
 }
 
-/** A new booking. Numbers start as NaN = "not entered yet". */
-export function newBookingDefaults(): BookingFormInput {
+/** A new booking, dated today. Numbers start as NaN = "not entered yet". */
+export function newBookingDefaults(today: string): BookingFormInput {
   return {
+    invoiceDate: today,
+    closedById: "",
     customerName: "",
     customerPhone: "",
     customerEmail: "",
@@ -37,6 +39,7 @@ export function newBookingDefaults(): BookingFormInput {
     ratePerPerson: Number.NaN,
     discountAmount: 0,
     amountPaid: 0,
+    slotAmount: 0,
     invoiceNote: "",
     internalNotes: "",
   };
@@ -50,6 +53,8 @@ export function invoiceInfoOf(booking: Booking): InvoiceInfo {
 /** The editable fields of a saved booking. */
 export function bookingFormDefaults(booking: Booking): BookingFormInput {
   return {
+    invoiceDate: booking.invoiceDate,
+    closedById: booking.closedBy?.refId ?? "",
     customerName: booking.customerName,
     customerPhone: booking.customerPhone,
     customerEmail: booking.customerEmail,
@@ -63,6 +68,7 @@ export function bookingFormDefaults(booking: Booking): BookingFormInput {
     ratePerPerson: booking.ratePerPerson,
     discountAmount: booking.discountAmount,
     amountPaid: booking.amountPaid,
+    slotAmount: booking.slotAmount,
     invoiceNote: booking.invoiceNote,
     internalNotes: booking.internalNotes,
   };

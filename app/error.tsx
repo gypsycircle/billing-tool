@@ -6,6 +6,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { routes } from "@/lib/domain/routes";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusPage } from "@/components/shared/status-page";
@@ -32,7 +33,7 @@ export default function ErrorPage({
             <RotateCcw />
             Try again
           </Button>
-          <Button variant="outline" nativeButton={false} render={<Link href="/bookings" />}>
+          <Button variant="outline" nativeButton={false} render={<Link href={routes.bookings.list} />}>
             Back to bookings
           </Button>
         </>

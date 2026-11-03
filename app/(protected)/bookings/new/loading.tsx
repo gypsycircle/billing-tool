@@ -4,5 +4,5 @@
 import { FormSkeleton } from "@/components/shared/page-skeletons";
 
 export default function Loading() {
-  return <FormSkeleton />;
+  return <FormSkeleton label="Loading the booking form" />;
 }

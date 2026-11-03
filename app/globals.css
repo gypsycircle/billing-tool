@@ -47,6 +47,10 @@
   --color-status-unpaid-soft: var(--status-unpaid-soft);
   --color-status-neutral: var(--status-neutral);
   --color-status-neutral-soft: var(--status-neutral-soft);
+  --color-tag-direct: var(--tag-direct);
+  --color-tag-direct-soft: var(--tag-direct-soft);
+  --color-tag-indirect: var(--tag-indirect);
+  --color-tag-indirect-soft: var(--tag-indirect-soft);
 
   /* Type */
   --font-sans: var(--font-geist-sans);
@@ -105,6 +109,27 @@
   --status-unpaid-soft: oklch(0.95 0.03 30);
   --status-neutral: oklch(0.5 0.02 250);        /* slate */
   --status-neutral-soft: oklch(0.94 0.008 250);
+  /* Categories, not states (an expense's kind): hues no status uses. Text ≥ 4.5:1 on its fill. */
+  --tag-direct: oklch(0.45 0.15 280);           /* indigo */
+  --tag-direct-soft: oklch(0.93 0.045 280);
+  --tag-indirect: oklch(0.47 0.16 345);         /* berry */
+  --tag-indirect-soft: oklch(0.94 0.04 345);
+
+  /* Dashboard chart lines, one per figure (lib/domain/dashboard.ts). Checked
+     with the dataviz palette validator against the card surface: every
+     neighbouring pair stays apart under colour-blind simulation and each line
+     clears 3:1. Expenses is also dashed (red and green can merge for
+     red-green colour blindness). */
+  --chart-sales: #9b47c2;                       /* violet */
+  --chart-cash: #c27c00;                        /* amber */
+  --chart-revenue: #00909c;                     /* teal */
+  --chart-gross: #4f9a1c;                       /* green */
+  --chart-net: #2a5bd0;                         /* deep blue */
+  --chart-expenses: #d6453c;                    /* red */
+  /* The comparison's two ranges: A (the earlier one, dashed) and B. Validated
+     as a pair: apart for every kind of colour vision, 3:1 on the card. */
+  --chart-range-a: #c27c00;                     /* amber */
+  --chart-range-b: #00909c;                     /* teal */
 }
 
 /* ── Dark: night ledger ─────────────────────────────────────────────────── */
@@ -147,6 +172,20 @@
   --status-unpaid-soft: oklch(0.31 0.06 30);
   --status-neutral: oklch(0.74 0.015 250);
   --status-neutral-soft: oklch(0.28 0.01 250);
+  --tag-direct: oklch(0.82 0.1 280);
+  --tag-direct-soft: oklch(0.31 0.07 280);
+  --tag-indirect: oklch(0.82 0.11 345);
+  --tag-indirect-soft: oklch(0.31 0.07 345);
+
+  /* The same hues, stepped for the dark card (validated the same way) */
+  --chart-sales: #b06ad6;
+  --chart-cash: #bd8010;
+  --chart-revenue: #16a0ac;
+  --chart-gross: #52a32a;
+  --chart-net: #4d7ce8;
+  --chart-expenses: #e25a50;
+  --chart-range-a: #bd8010;
+  --chart-range-b: #16a0ac;
 }
 
 @layer base {

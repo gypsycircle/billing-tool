@@ -1,7 +1,6 @@
 // app/api/auth/logout/route.ts
-// POST /api/auth/logout — clears the session cookie.
-// Idempotent, and exempt from the session requirement so users with an
-// expired or garbage cookie can always clear it.
+// POST /api/auth/logout — sign out: clears the session cookie. Open to everyone and
+//                         idempotent, so an expired or broken cookie can always be cleared.
 
 import { withApiRoute } from "@/lib/server/http/route";
 import { jsonOk, methodNotAllowed } from "@/lib/server/http/respond";

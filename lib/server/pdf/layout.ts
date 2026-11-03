@@ -266,7 +266,8 @@ function checkPrintable(page: BillPage, faces: Faces, c: BillContent): boolean {
     [c.destination, ["sansMedium"], "destination", "Destination"],
     [c.customerName, ["serif"], "customerName", "Customer name"],
     [c.customerPhone, ["sans"], "customerPhone", "Mobile number"],
-    [c.batchName, ["sans"], "batchName", "Batch name"],
+    // As typed (the trip block) and in capitals (the services table)
+    [`${c.batchName} ${c.batchName.toUpperCase()}`, ["sans"], "batchName", "Batch name"],
     [c.packageName, ["sansMedium"], "packageName", "Package name"],
     [c.serviceDescription, ["sans"], "routeDescription", "Route"],
     [c.note.join(" "), ["sans"], "invoiceNote", "Invoice note"],
@@ -524,21 +525,21 @@ function terms(page: BillPage, top: number): number {
   page.eyebrow("Terms and conditions", INNER_LEFT, headingBaseline);
   // The points at the bank details' size
   const size = TYPE.body;
-  const lineHeight = 11.5;
+  const lineHeight = 11;
   const numberX = INNER_LEFT;
   const textX = INNER_LEFT + 16;
   const width = INNER_RIGHT - textX;
   let baseline = firstLineUnder(headingBaseline, size);
 
   TERMS.forEach((term, i) => {
-    if (i > 0) baseline += lineHeight + 3.5;
+    if (i > 0) baseline += lineHeight + 3;
     page.text(`${i + 1}.`, numberX, baseline, "sansSemibold", size, COLORS.ink);
     const lines = page.rich([{ text: `${term.lead} `, font: "sansSemibold" }, { text: term.text, font: "sans" }], size, width);
     lines.forEach((line, l) => page.richLine(line, textX, baseline + l * lineHeight, size, COLORS.ink));
     baseline += (lines.length - 1) * lineHeight;
 
     (term.points ?? []).forEach((point, p) => {
-      baseline += lineHeight + 1.5;
+      baseline += lineHeight + 1;
       const letterX = textX;
       const pointX = textX + 14;
       page.text(`${String.fromCharCode(97 + p)}.`, letterX, baseline, "sans", size, COLORS.muted);
@@ -548,10 +549,10 @@ function terms(page: BillPage, top: number): number {
     });
 
     if (term.important?.length) {
-      baseline += lineHeight + 1.5;
+      baseline += lineHeight + 1;
       page.text("Important:", textX, baseline, "sansSemibold", size, COLORS.ink);
       term.important.forEach((point) => {
-        baseline += lineHeight + 1.5;
+        baseline += lineHeight + 1;
         const pointX = textX + 14;
         page.text("•", textX + 2, baseline, "sans", size, COLORS.muted);
         const pointLines = page.rich([{ text: point, font: "sans" }], size, INNER_RIGHT - pointX);

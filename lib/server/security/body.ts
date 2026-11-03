@@ -1,59 +1,29 @@
 // lib/server/security/body.ts
-// Size-capped JSON body reader for POST/PATCH routes.
+// Size-capped JSON body reader for the routes that take a body (withApiRoute's
+// `body` option).
 
 import "server-only";
 
-// ---------------------------------------------------------------------------
-// Maximum request body size (bytes) — prevents abuse on POST/PATCH
-// ---------------------------------------------------------------------------
+import { jsonError } from "../http/respond";
 
-/** 64 KB — generous for JSON booking payloads, blocks bulk abuse. */
+/** 64 KB: generous for any record's JSON, blocks bulk abuse. */
 const MAX_BODY_SIZE = 64 * 1024;
 
-// ---------------------------------------------------------------------------
-// Body size guard
-// ---------------------------------------------------------------------------
-
 /**
- * Reads and parses the JSON body, rejecting if it exceeds MAX_BODY_SIZE.
- * Returns `{ data, error }` — if `error` is non-null, return it as the response.
+ * Reads and parses the JSON body, refusing one over MAX_BODY_SIZE (413) or
+ * one that isn't JSON (400). Returns `{ data }`, or `{ error }`: the response
+ * to send instead.
  */
-export async function readJsonBody<T = unknown>(
-  request: Request
-): Promise<{ data: T | null; error: Response | null }> {
-  // Check Content-Length if available
+export async function readJsonBody(request: Request): Promise<{ data: unknown; error: null } | { data: null; error: Response }> {
+  const tooLarge = () => ({ data: null, error: jsonError("Request body too large.", 413) });
   const contentLength = request.headers.get("content-length");
-  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
-    return {
-      data: null,
-      error: Response.json(
-        { error: "Request body too large." },
-        { status: 413, headers: { "Cache-Control": "no-store" } }
-      ),
-    };
-  }
+  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) return tooLarge();
 
   try {
     const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_BODY_SIZE) {
-      return {
-        data: null,
-        error: Response.json(
-          { error: "Request body too large." },
-          { status: 413, headers: { "Cache-Control": "no-store" } }
-        ),
-      };
-    }
-
-    const data = JSON.parse(text) as T;
-    return { data, error: null };
+    if (new TextEncoder().encode(text).byteLength > MAX_BODY_SIZE) return tooLarge();
+    return { data: JSON.parse(text) as unknown, error: null };
   } catch {
-    return {
-      data: null,
-      error: Response.json(
-        { error: "Invalid JSON body." },
-        { status: 400, headers: { "Cache-Control": "no-store" } }
-      ),
-    };
+    return { data: null, error: jsonError("Invalid JSON body.", 400) };
   }
 }

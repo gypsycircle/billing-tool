@@ -1,12 +1,12 @@
 // lib/server/db/bookings-repo.ts
-// Persistence only: read and write bookings and invoice counters. No business
-// rules (those live in lib/server/bookings/service.ts). Each function is one
-// database round trip unless noted, and every read fetches only the fields
-// its caller uses.
+// Persistence only: read and write bookings. No business rules (those live in
+// lib/server/bookings/service.ts); invoice numbers come from counters-repo.ts.
+// Each function is one database round trip unless noted, and every read
+// fetches only the fields its caller uses.
 
 import "server-only";
 
-import { MongoNetworkError, MongoServerError, MongoServerSelectionError, type Filter } from "mongodb";
+import { MongoNetworkError, MongoServerSelectionError, type Filter } from "mongodb";
 import { PAGE_SIZE, type BookingFilters, type PageInfo } from "@/lib/domain/filters";
 import type { LedgerSummary, LedgerTotals } from "@/lib/domain/summary";
 import {
@@ -15,11 +15,16 @@ import {
   type BookingRef,
   type LedgerRow,
 } from "@/lib/domain/types";
-import { DuplicateInvoiceNumberError } from "../errors";
+import { DuplicateNumberError } from "../errors";
+import { isDuplicateKey } from "./duplicate-key";
 import { BILL_FIELDS, type BillBooking } from "../pdf/content";
-import { bookingsCollection, countersCollection, settingsCollection, type BookingDoc } from "./collections";
-import { BOOKING_PROJECTION, bookingUpdateSet, fromBookingDoc, pickFromDoc, projectionOf, toBookingDoc } from "./mapping";
-import { destinationsGroup, ledgerMatch, matchingGroup, summaryGroup } from "./ledger-query";
+import { bookingsCollection, settingsCollection, type BookingDoc, type BookingHistoryDoc, type PaymentDoc } from "./collections";
+import { BOOKING_PROJECTION, bookingReads, bookingUpdateSet, fromBookingDoc, toBookingDoc } from "./mapping";
+import { destinationsGroup, ledgerHint, ledgerMatch, matchingGroup, summaryGroup } from "./ledger-query";
+import { clampPage, requestedPage, stripId } from "./paging";
+import { insertHistory } from "./history-repo";
+import { insertPayment } from "./payments-repo";
+import { inTransaction } from "./transactions";
 
 // ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -29,12 +34,12 @@ export async function findBooking(id: string): Promise<Booking | null> {
 }
 
 const BILL_READ = [...BILL_FIELDS, "bookingStatus"] as const;
-const BILL_PROJECTION = projectionOf(BILL_READ);
+const BILL_PROJECTION = bookingReads.projectionOf(BILL_READ);
 
 /** What the Bill of Supply prints, plus the status (archived bookings have no bill). */
 export async function findBillBooking(id: string): Promise<(BillBooking & Pick<Booking, "bookingStatus">) | null> {
   const doc = await (await bookingsCollection()).findOne({ _id: id }, { projection: BILL_PROJECTION });
-  return doc ? pickFromDoc(doc, BILL_READ) : null;
+  return doc ? bookingReads.pickFromDoc(doc, BILL_READ) : null;
 }
 
 /** The booking's current version (updatedAt), or null if there is no such booking. */
@@ -55,24 +60,26 @@ export interface LedgerResult extends PageInfo {
 const NO_TOTALS: LedgerTotals = {
   count: 0, total: 0, received: 0, balance: 0, activeCount: 0, activeTotal: 0, activeReceived: 0, activeBalance: 0,
 };
-const NO_SUMMARY: LedgerSummary = { activeCount: 0, activeTravellers: 0, outstanding: 0, collected: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
+const NO_SUMMARY: LedgerSummary = { activeCount: 0, activeTravellers: 0, outstanding: 0, collected: 0, refundsDueCount: 0, refundsDueAmount: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
 
-const LEDGER_ROW_PROJECTION = projectionOf(LEDGER_ROW_FIELDS);
+const LEDGER_ROW_PROJECTION = bookingReads.projectionOf(LEDGER_ROW_FIELDS);
 
 /** Newest first; the _id tie-breaker keeps pages stable. Served by the status_createdAt_id index. */
 const NEWEST_FIRST = { createdAt: -1, _id: 1 } as const;
 
 type Grouped<T> = T & { _id: null };
 
-/** The page of ledger rows, newest first. */
-async function pageItems(match: Filter<BookingDoc>, skip: number, limit: number): Promise<LedgerRow[]> {
+/** The page of ledger rows, newest first (on the index ledgerHint names, when it names one). */
+async function pageItems(filters: BookingFilters, match: Filter<BookingDoc>, skip: number, limit: number): Promise<LedgerRow[]> {
+  const hint = ledgerHint(filters);
   const docs = await (await bookingsCollection())
-    .find(match, { projection: LEDGER_ROW_PROJECTION })
+    .find(match, { projection: LEDGER_ROW_PROJECTION, ...(hint ? { hint } : {}) })
     .sort(NEWEST_FIRST)
     .skip(skip)
     .limit(limit)
     .toArray();
-  return docs.map((doc) => pickFromDoc(doc, LEDGER_ROW_FIELDS));
+  // Bookings saved before these fields existed have no slot amount, refund or Closed by
+  return docs.map((doc) => ({ ...bookingReads.pickFromDoc(doc, LEDGER_ROW_FIELDS), slotAmount: doc.slotAmount ?? 0, refundAmount: doc.refundAmount ?? 0, closedBy: doc.closedBy ?? null }));
 }
 
 /**
@@ -85,31 +92,19 @@ async function pageItems(match: Filter<BookingDoc>, skip: number, limit: number)
 export async function ledgerPage(filters: BookingFilters, today: string, pageSize = PAGE_SIZE): Promise<LedgerResult> {
   const collection = await bookingsCollection();
   const match = ledgerMatch(filters, today);
-  let page = Math.max(1, Math.floor(filters.page) || 1);
+  const page = requestedPage(filters.page);
+  const fetchPage = (p: number) => pageItems(filters, match, (p - 1) * pageSize, pageSize);
 
   const [firstItems, matching, summary, destinations] = await Promise.all([
-    pageItems(match, (page - 1) * pageSize, pageSize),
+    fetchPage(page),
     collection.aggregate<Grouped<LedgerTotals>>([{ $match: match }, ...matchingGroup]).toArray(),
     collection.aggregate<Grouped<LedgerSummary>>(summaryGroup(today)).toArray(),
     collection.aggregate<{ _id: string; destination: string }>(destinationsGroup).toArray(),
   ]);
 
   const totals = { ...NO_TOTALS, ...stripId(matching[0]) };
-  const pageCount = Math.max(1, Math.ceil(totals.count / pageSize));
-  let items = firstItems;
-  if (page > pageCount) {
-    page = pageCount;
-    items = totals.count === 0 ? [] : await pageItems(match, (page - 1) * pageSize, pageSize);
-  }
-
-  const from = totals.count === 0 ? 0 : (page - 1) * pageSize + 1;
   return {
-    items,
-    page,
-    pageCount,
-    from,
-    to: from === 0 ? 0 : from + items.length - 1,
-    total: totals.count,
+    ...(await clampPage(page, pageSize, firstItems, totals.count, fetchPage)),
     totals,
     summary: { ...NO_SUMMARY, ...stripId(summary[0]) },
     destinations: destinations.map((d) => d.destination.trim()),
@@ -117,49 +112,21 @@ export async function ledgerPage(filters: BookingFilters, today: string, pageSiz
   };
 }
 
-function stripId<T extends { _id: unknown }>(value: T | undefined): Omit<T, "_id"> | undefined {
-  if (!value) return undefined;
-  const { _id, ...rest } = value;
-  void _id;
-  return rest;
-}
-
-// ── Invoice counter ───────────────────────────────────────────────────────
-
-const counterId = (year: number) => `invoice:${year}`;
-
-/** The year's last issued sequence, or null if none yet. Read-only (for the form's preview). */
-export async function peekInvoiceSequence(year: number): Promise<number | null> {
-  const doc = await (await countersCollection()).findOne({ _id: counterId(year) }, { projection: { _id: 0, seq: 1 } });
-  return doc ? doc.seq : null;
-}
-
-/**
- * Atomically issues the year's next sequence: `firstNumber` for the year's
- * first booking, then +1 each time. Concurrent calls always get distinct numbers.
- */
-export async function issueInvoiceSequence(year: number, firstNumber: number): Promise<number> {
-  const doc = await (await countersCollection()).findOneAndUpdate(
-    { _id: counterId(year) },
-    [{ $set: { seq: { $add: [{ $ifNull: ["$seq", firstNumber - 1] }, 1] } } }],
-    { upsert: true, returnDocument: "after", projection: { _id: 0, seq: 1 } }
-  );
-  if (!doc) throw new Error("Invoice counter update returned nothing");
-  return doc.seq;
-}
-
 // ── Writes ────────────────────────────────────────────────────────────────
 
-const isDuplicateKey = (err: unknown): err is MongoServerError => err instanceof MongoServerError && err.code === 11000;
-
 /**
- * Inserts a new booking. With an idempotency key, a repeat of the same create
- * (double submit, retry) returns the booking the first request stored.
+ * Inserts a new booking, its first payment entry (if anything was paid) and
+ * the first row of its history, together or not at all. With an idempotency key, a repeat of the same
+ * create (double submit, retry) returns the booking the first request stored.
  */
-export async function insertBooking(booking: Booking, idempotencyKey?: string): Promise<Booking> {
+export async function insertBooking(booking: Booking, payment: PaymentDoc | null, history: BookingHistoryDoc, idempotencyKey?: string): Promise<Booking> {
   const collection = await bookingsCollection();
   try {
-    await collection.insertOne(toBookingDoc(booking, idempotencyKey));
+    await inTransaction(async (session) => {
+      await collection.insertOne(toBookingDoc(booking, idempotencyKey), { session });
+      if (payment) await insertPayment(payment, session);
+      await insertHistory(history, session);
+    });
     return booking;
   } catch (err) {
     if (!isDuplicateKey(err)) throw err;
@@ -167,7 +134,7 @@ export async function insertBooking(booking: Booking, idempotencyKey?: string): 
       const first = await findByIdempotencyKey(idempotencyKey);
       if (first) return first;
     }
-    if (err.keyPattern?.invoiceNumber) throw new DuplicateInvoiceNumberError(booking.invoiceNumber);
+    if (err.keyPattern?.invoiceNumber) throw new DuplicateNumberError("booking", "Invoice number", booking.invoiceNumber);
     throw err;
   }
 }
@@ -180,22 +147,30 @@ export async function findByIdempotencyKey(idempotencyKey: string): Promise<Book
 
 /**
  * Replaces a booking's editable fields only if it is still at the version
- * the caller read (`updatedAt`). False when the booking is missing or someone
- * saved first — the caller tells which. Atomic: no lock needed, and nothing is
- * read back (the caller already holds what was written).
+ * the caller read (`updatedAt`), and records the payment entry its amount-paid
+ * change makes, together or not at all. False when the booking is missing or
+ * someone saved first — the caller tells which. No lock needed, and nothing
+ * is read back (the caller already holds what was written).
  */
-export async function updateBookingIfVersion(booking: Booking, expectedUpdatedAt: string): Promise<boolean> {
+export async function updateBookingIfVersion(booking: Booking, expectedUpdatedAt: string, payment: PaymentDoc | null, history: BookingHistoryDoc | null): Promise<boolean> {
   const expected = new Date(expectedUpdatedAt);
   if (Number.isNaN(expected.getTime())) return false;
-  const result = await (await bookingsCollection()).updateOne(
-    { _id: booking.bookingId, updatedAt: expected },
-    { $set: bookingUpdateSet(booking) }
-  );
-  return result.matchedCount === 1;
+  const collection = await bookingsCollection();
+  return inTransaction(async (session) => {
+    const result = await collection.updateOne(
+      { _id: booking.bookingId, updatedAt: expected },
+      { $set: bookingUpdateSet(booking) },
+      { session }
+    );
+    if (result.matchedCount !== 1) return false;
+    if (payment) await insertPayment(payment, session);
+    if (history) await insertHistory(history, session);
+    return true;
+  });
 }
 
 const REF_FIELDS = ["bookingId", "invoiceNumber", "updatedAt", "bookingStatus"] as const;
-const REF_PROJECTION = projectionOf(REF_FIELDS);
+const REF_PROJECTION = bookingReads.projectionOf(REF_FIELDS);
 
 /**
  * Sets only the booking status, in one atomic call, if the booking is still at
@@ -217,7 +192,7 @@ export async function setStatusIfVersion(
     { $set: { bookingStatus: status, updatedAt: new Date(updatedAt) } },
     { returnDocument: "after", projection: REF_PROJECTION }
   );
-  return doc ? pickFromDoc(doc, REF_FIELDS) : null;
+  return doc ? bookingReads.pickFromDoc(doc, REF_FIELDS) : null;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────

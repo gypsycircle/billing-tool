@@ -1,5 +1,5 @@
 // lib/client/api-client.ts
-// Browser fetch helper for our own JSON API.
+// Browser fetch helpers for our own API (JSON, and files such as the bill).
 // - same-origin credentials, JSON headers
 // - 401 (session expired) → toast + redirect to /?next=<current path>
 // - errors come back as { error, fieldErrors } instead of throwing
@@ -21,11 +21,17 @@ export interface ApiResult<T> {
 }
 
 /** Session expired (401): say so, then go to sign-in and come back here after. */
-export function redirectToSignIn(): void {
+function redirectToSignIn(): void {
   const next = encodeURIComponent(window.location.pathname + window.location.search);
   toast.error("Your session has expired. Please sign in again.");
   setTimeout(() => window.location.replace(`/?next=${next}`), 1000);
 }
+
+const NETWORK_ERROR = "Network error. Please check your connection and try again.";
+
+/** The error message an error response carries, or a generic one with its status. */
+const errorOf = (body: { error?: unknown } | null, status: number) =>
+  typeof body?.error === "string" ? body.error : `Request failed (${status}).`;
 
 export async function apiFetch<T = unknown>(url: string, options: RequestInit = {}): Promise<ApiResult<T>> {
   try {
@@ -45,7 +51,7 @@ export async function apiFetch<T = unknown>(url: string, options: RequestInit = 
     if (!response.ok) {
       return {
         data: null,
-        error: typeof body?.error === "string" ? body.error : `Request failed (${response.status}).`,
+        error: errorOf(body, response.status),
         fieldErrors: body?.fieldErrors && typeof body.fieldErrors === "object" ? body.fieldErrors : {},
         status: response.status,
       };
@@ -55,9 +61,25 @@ export async function apiFetch<T = unknown>(url: string, options: RequestInit = 
   } catch {
     return {
       data: null,
-      error: "Network error. Please check your connection and try again.",
+      error: NETWORK_ERROR,
       fieldErrors: {},
       status: null,
     };
+  }
+}
+
+/** A file from the API (the bill) with its name (Content-Disposition), or the error, as apiFetch reports them. */
+export async function apiFetchFile(url: string): Promise<{ blob: Blob; fileName: string | null } | { error: string; status: number | null }> {
+  try {
+    const response = await fetch(url, { credentials: "same-origin" });
+    if (response.status === 401) {
+      redirectToSignIn();
+      return { error: "Session expired.", status: 401 };
+    }
+    if (!response.ok) return { error: errorOf(await response.json().catch(() => null), response.status), status: response.status };
+    const fileName = response.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? null;
+    return { blob: await response.blob(), fileName };
+  } catch {
+    return { error: NETWORK_ERROR, status: null };
   }
 }

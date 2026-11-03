@@ -9,6 +9,7 @@ import type { MetadataRoute } from "next";
 import icon192 from "@/components/brand/app-icons/icon-192.png";
 import icon512 from "@/components/brand/app-icons/icon-512.png";
 import iconMaskable from "@/components/brand/app-icons/icon-maskable-512.png";
+import { routes } from "@/lib/domain/routes";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -17,7 +18,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "GC Billing",
     description: "Private billing and invoice management tool for GypsyCircle.",
     // Signed-out users are sent on to the access page by proxy.ts
-    start_url: "/bookings",
+    start_url: routes.bookings.list,
     scope: "/",
     display: "standalone",
     background_color: "#f8f5ee", // the light theme's paper

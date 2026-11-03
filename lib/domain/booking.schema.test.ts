@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bookingDraftSchema, bookingFormSchema, createBookingSchema, tripEndIssue, tripStartIssue, updateBookingSchema } from "./booking.schema";
+import { bookingDraftSchema, bookingFormSchema, createBookingSchema, invoiceDateIssue, tripEndIssue, tripStartIssue, updateBookingSchema } from "./booking.schema";
 import type { BookingInput } from "./types";
 
 const sample: BookingInput = {
+  slotAmount: 0,
   invoiceNumber: "142",
   invoiceDate: "13/01/2026",
   dueDate: "12/02/2026",
@@ -22,6 +23,9 @@ const sample: BookingInput = {
   invoiceNote: "COMPLIMENTARY FOR 5 PAX HAS BEEN ADDED.",
   internalNotes: "",
 };
+
+/** What the form and the API send. */
+const draft = { ...sample, closedById: "11111111-1111-4111-8111-111111111111" };
 
 function fieldErrors(input: unknown): string[] {
   const result = createBookingSchema.safeParse(input);
@@ -105,16 +109,37 @@ describe("updateBookingSchema", () => {
 });
 
 describe("bookingDraftSchema", () => {
-  it("drops the assigned invoice number and dates", () => {
-    const result = bookingDraftSchema.parse(sample);
+  it("keeps the invoice date, and drops the assigned invoice number and due date", () => {
+    const result = bookingDraftSchema.parse(draft);
+    expect(result.invoiceDate).toBe(sample.invoiceDate);
     expect(result).not.toHaveProperty("invoiceNumber");
-    expect(result).not.toHaveProperty("invoiceDate");
     expect(result).not.toHaveProperty("dueDate");
   });
 
+  it("requires who closed it", () => {
+    for (const closedById of ["", "not-an-id", undefined]) {
+      const issue = bookingDraftSchema.safeParse({ ...draft, closedById }).error?.issues.find((i) => i.path[0] === "closedById");
+      expect(issue?.message).toBe("Choose who closed this booking.");
+    }
+  });
+
+  it("keeps Closed by editable and the invoice date not", () => {
+    expect(updateBookingSchema.safeParse({ closedById: draft.closedById }).success).toBe(true);
+    expect(updateBookingSchema.safeParse({ closedById: "" }).success).toBe(false);
+  });
+
   it("keeps the trip and amount rules", () => {
-    expect(bookingDraftSchema.safeParse({ ...sample, tripEndDate: "18/01/2026" }).success).toBe(false);
-    expect(bookingDraftSchema.safeParse({ ...sample, discountAmount: 4_00_001 }).success).toBe(false);
+    expect(bookingDraftSchema.safeParse({ ...draft, tripEndDate: "18/01/2026" }).success).toBe(false);
+    expect(bookingDraftSchema.safeParse({ ...draft, discountAmount: 4_00_001 }).success).toBe(false);
+  });
+
+  it("reports a cross-field error together with other fields' errors", () => {
+    const result = bookingDraftSchema.safeParse({ ...draft, customerName: "", ratePerPerson: Number.NaN, tripEndDate: "18/01/2026" });
+    const paths = result.success ? [] : result.error.issues.map((i) => i.path.join("."));
+    expect(paths).toEqual(expect.arrayContaining(["customerName", "ratePerPerson", "tripEndDate"]));
+    // A rule whose own fields are invalid stays quiet: the field errors explain it
+    const amounts = bookingDraftSchema.safeParse({ ...draft, travellers: Number.NaN, discountAmount: 9_99_99_999 });
+    expect(amounts.success ? [] : amounts.error.issues.map((i) => i.path.join("."))).toEqual(["travellers"]);
   });
 });
 
@@ -129,15 +154,15 @@ describe("trip start after the invoice date", () => {
   });
 
   it("is enforced by the form schema unless the saved start is unchanged", () => {
-    const early = { ...sample, tripStartDate: "10/01/2026", tripEndDate: "24/01/2026" };
-    const issues = bookingFormSchema("13/01/2026").safeParse(early).error?.issues ?? [];
+    const early = { ...draft, tripStartDate: "10/01/2026", tripEndDate: "24/01/2026" };
+    const issues = bookingFormSchema().safeParse(early).error?.issues ?? [];
     expect(issues.map((i) => i.path.join("."))).toContain("tripStartDate");
-    expect(bookingFormSchema("13/01/2026", { tripStartDate: "10/01/2026" }).safeParse(early).success).toBe(true);
+    expect(bookingFormSchema({ saved: { tripStartDate: "10/01/2026" } }).safeParse(early).success).toBe(true);
   });
 
   it("reports the trip start even while other fields are still empty", () => {
     const partial = { ...sample, customerName: "", tripStartDate: "13/01/2026" };
-    const paths = bookingFormSchema("13/01/2026").safeParse(partial).error?.issues.map((i) => i.path.join(".")) ?? [];
+    const paths = bookingFormSchema().safeParse(partial).error?.issues.map((i) => i.path.join(".")) ?? [];
     expect(paths).toEqual(expect.arrayContaining(["customerName", "tripStartDate"]));
   });
 });
@@ -149,16 +174,42 @@ describe("trip end after the invoice date", () => {
   });
 
   it("is enforced by the form schema unless the saved end is unchanged", () => {
-    const past = { ...sample, tripStartDate: "10/01/2026", tripEndDate: "12/01/2026" };
-    const paths = bookingFormSchema("13/01/2026").safeParse(past).error?.issues.map((i) => i.path.join(".")) ?? [];
+    const past = { ...draft, tripStartDate: "10/01/2026", tripEndDate: "12/01/2026" };
+    const paths = bookingFormSchema().safeParse(past).error?.issues.map((i) => i.path.join(".")) ?? [];
     expect(paths).toEqual(expect.arrayContaining(["tripStartDate", "tripEndDate"]));
     const saved = { tripStartDate: "10/01/2026", tripEndDate: "12/01/2026" };
-    expect(bookingFormSchema("13/01/2026", saved).safeParse(past).success).toBe(true);
+    expect(bookingFormSchema({ saved }).safeParse(past).success).toBe(true);
   });
 
   it("reports the trip end even while other fields are still empty", () => {
     const partial = { ...sample, customerName: "", tripEndDate: "13/01/2026" };
-    const paths = bookingFormSchema("13/01/2026").safeParse(partial).error?.issues.map((i) => i.path.join(".")) ?? [];
+    const paths = bookingFormSchema().safeParse(partial).error?.issues.map((i) => i.path.join(".")) ?? [];
     expect(paths).toEqual(expect.arrayContaining(["customerName", "tripEndDate"]));
+  });
+});
+
+describe("invoice date of a new booking", () => {
+  const today = "13/01/2026";
+
+  it("is today or yesterday only", () => {
+    expect(invoiceDateIssue(today, today)).toBeNull();
+    expect(invoiceDateIssue("12/01/2026", today)).toBeNull();
+    expect(invoiceDateIssue("14/01/2026", today)).toBe("Invoice date must be today or yesterday.");
+    expect(invoiceDateIssue("11/01/2026", today)).toBe("Invoice date must be today or yesterday.");
+    expect(invoiceDateIssue("31/12/2025", "01/01/2026")).toBeNull();
+  });
+
+  it("is checked by the create form only", () => {
+    const old = { ...draft, invoiceDate: "01/01/2026" };
+    const paths = bookingFormSchema({ today }).safeParse(old).error?.issues.map((i) => i.path.join(".")) ?? [];
+    expect(paths).toContain("invoiceDate");
+    expect(bookingFormSchema().safeParse(old).success).toBe(true);
+  });
+
+  it("moves the first day a trip can start", () => {
+    const startsToday = { ...draft, tripStartDate: today };
+    expect(bookingFormSchema({ today }).safeParse({ ...startsToday, invoiceDate: "12/01/2026" }).success).toBe(true);
+    const paths = bookingFormSchema({ today }).safeParse({ ...startsToday, invoiceDate: today }).error?.issues.map((i) => i.path.join(".")) ?? [];
+    expect(paths).toContain("tripStartDate");
   });
 });

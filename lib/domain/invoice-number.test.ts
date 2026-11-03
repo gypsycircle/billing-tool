@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatInvoiceNumber, nextSequence } from "./invoice-number";
+import { formatInvoiceNumber, formatYearlyNumber, nextSequence } from "./invoice-number";
 
 describe("formatInvoiceNumber", () => {
   it("pads the counter to at least 4 digits", () => {
@@ -18,5 +18,12 @@ describe("nextSequence", () => {
     expect(nextSequence(143, 143)).toBe(144);
     expect(nextSequence(999, 143)).toBe(1000);
     expect(formatInvoiceNumber(2026, nextSequence(9999, 143))).toBe("INV_202610000");
+  });
+});
+
+describe("formatYearlyNumber", () => {
+  it("gives expense numbers the invoice numbers' shape", () => {
+    expect(formatYearlyNumber("EXP", 2026, 1)).toBe("EXP_20260001");
+    expect(formatYearlyNumber("EXP", 2026, 12_345)).toBe("EXP_202612345");
   });
 });

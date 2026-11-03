@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasActiveFilters, parseBookingFilters } from "./filters";
+import { bookingFilterParams, hasActiveFilters, parseBookingFilters } from "./filters";
 
 const none = parseBookingFilters({});
 
@@ -12,6 +12,10 @@ describe("parseBookingFilters", () => {
       status: undefined,
       archived: true,
       due: undefined,
+      from: "",
+      to: "",
+      booked: "",
+      closedBy: "",
       page: 1,
     });
   });
@@ -25,6 +29,22 @@ describe("parseBookingFilters", () => {
     }
   });
 
+  it("keeps only the filters a view can use", () => {
+    // Archived bookings have their own view, not a trip status
+    expect(parseBookingFilters({ status: "Archived" }).status).toBeUndefined();
+    expect(parseBookingFilters({ status: "Cancelled" }).status).toBe("Cancelled");
+    // The archived view has no trip status or due date to narrow by
+    expect(parseBookingFilters({ archived: "1", status: "Active", due: "overdue", payment: "Paid" })).toMatchObject({ archived: true, status: undefined, due: undefined, payment: "Paid" });
+  });
+
+  it("reads the booked date, and ignores one that isn't a real date", () => {
+    expect(parseBookingFilters({ booked: "2026-02-01" }).booked).toBe("01/02/2026");
+    expect(parseBookingFilters({ booked: "2026-02-30" }).booked).toBe("");
+    expect(parseBookingFilters({ booked: "01/02/2026" }).booked).toBe("");
+    expect(bookingFilterParams(parseBookingFilters({ booked: "2026-02-01" })).booked).toBe("2026-02-01");
+    expect(bookingFilterParams(none).booked).toBe("");
+  });
+
   it("caps search length", () => {
     expect(parseBookingFilters({ q: "a".repeat(500) }).q).toHaveLength(100);
   });
@@ -33,6 +53,7 @@ describe("parseBookingFilters", () => {
     expect(hasActiveFilters(none)).toBe(false);
     expect(hasActiveFilters(parseBookingFilters({ q: "x" }))).toBe(true);
     expect(hasActiveFilters(parseBookingFilters({ due: "week" }))).toBe(true);
+    expect(hasActiveFilters(parseBookingFilters({ booked: "2026-02-01" }))).toBe(true);
     expect(hasActiveFilters(parseBookingFilters({ page: "2" }))).toBe(false);
   });
 });

@@ -30,6 +30,11 @@ const booking: Booking = {
   bookingStatus: "Active",
   invoiceNote: "",
   internalNotes: "VIP",
+  slotAmount: 0,
+  cancelledOn: null,
+  refundAmount: 0,
+  refundedOn: null,
+  closedBy: { refId: "11111111-1111-4111-8111-111111111111", label: "Ravi Kumar" },
 };
 
 describe("booking ↔ document mapping", () => {

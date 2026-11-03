@@ -36,6 +36,11 @@ export const BILL_FIELDS = [
 
 export type BillBooking = Pick<Booking, (typeof BILL_FIELDS)[number]>;
 
+/** Only what the bill prints, from a whole booking: the copy a payment entry keeps. */
+export function billOf(booking: BillBooking): BillBooking {
+  return Object.fromEntries(BILL_FIELDS.map((field) => [field, booking[field]])) as unknown as BillBooking;
+}
+
 export interface BillContent {
   invoiceNumber: string;
   invoiceDate: string;

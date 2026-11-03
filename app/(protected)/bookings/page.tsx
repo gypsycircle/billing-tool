@@ -1,33 +1,38 @@
-// app/(protected)/page.tsx
-// Dashboard: summary figures (active bookings), filters and the ledger.
+// app/(protected)/bookings/page.tsx
+// The bookings ledger: summary figures (active bookings), filters and the table.
 // Filters and the page come from the URL and are applied here on the server.
 
 import type { Metadata } from "next";
-import Link from "next/link";
-import { NotebookPen, Plus, SearchX } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
+import { NotebookPen } from "lucide-react";
 import { BookingFilters } from "@/components/bookings/booking-filters";
-import { LedgerPagination } from "@/components/bookings/ledger-pagination";
 import { LedgerTable } from "@/components/bookings/ledger-table";
-import { EmptyState } from "@/components/shared/empty-state";
+import { NoMatches, NothingYet } from "@/components/shared/list-empty-states";
 import { Money } from "@/components/shared/money";
+import { NewRecordButton } from "@/components/shared/new-record-button";
 import { PageHeader } from "@/components/shared/page-header";
+import { RecordList } from "@/components/shared/record-list";
 import { Stat, StatGroup } from "@/components/shared/stat";
-import { hasActiveFilters, parseBookingFilters } from "@/lib/domain/filters";
-import { getLedger } from "@/lib/server/bookings/service";
+import { tripDatePresets } from "@/lib/domain/date-range";
+import { todayIST } from "@/lib/domain/dates";
+import { bookingFilterParams, hasActiveFilters, parseBookingFilters } from "@/lib/domain/filters";
+import { routes } from "@/lib/domain/routes";
+import { SHORTCUTS } from "@/lib/domain/shortcuts";
+import { plural } from "@/lib/domain/words";
+import { getBookingLedger } from "@/lib/server/bookings/service";
+import { getTeamFilterOptions } from "@/lib/server/team/service";
 
 export const metadata: Metadata = { title: "Bookings" };
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-export default async function DashboardPage({ searchParams }: PageProps<"/bookings">) {
+export default async function BookingsPage({ searchParams }: PageProps<"/bookings">) {
   const filters = parseBookingFilters(await searchParams);
   // One page of the ledger, its totals, the summary figures and the destination
   // list, all from the database in parallel
-  const ledger = await getLedger(filters);
+  const [ledger, team] = await Promise.all([getBookingLedger(filters), getTeamFilterOptions()]);
   const { summary } = ledger;
-  const onlyArchivedView = filters.archived && !filters.q && !filters.destination && !filters.payment;
+  const today = todayIST();
+  // The archived view with nothing else narrowing it
+  const onlyArchivedView = filters.archived && !hasActiveFilters({ ...filters, archived: false });
 
   return (
     <>
@@ -35,13 +40,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/bookin
         eyebrow="Ledger"
         title="Bookings"
         description="Every active booking, what has been received and what is still owed."
-        actions={
-          <Button size="lg" nativeButton={false} render={<Link href="/bookings/new" />}>
-            <Plus />
-            New booking
-            <Kbd className="ml-1 hidden bg-primary-foreground/15 text-primary-foreground sm:inline-flex">N</Kbd>
-          </Button>
-        }
+        actions={<NewRecordButton href={routes.bookings.new} label="New booking" shortcut={SHORTCUTS.newBooking} />}
       />
 
       <StatGroup className="mb-10">
@@ -50,7 +49,19 @@ export default async function DashboardPage({ searchParams }: PageProps<"/bookin
           value={<Money amount={summary.outstanding} />}
           hint={summary.overdueCount > 0 ? `${plural(summary.overdueCount, "booking")} overdue` : "Nothing overdue"}
         />
-        <Stat label="Collected" value={<Money amount={summary.collected} />} hint="Received on active bookings" />
+        <Stat
+          label="Collected"
+          value={<Money amount={summary.collected} />}
+          hint={
+            summary.refundsDueCount > 0 ? (
+              <>
+                After refunds · <Money amount={summary.refundsDueAmount} /> to refund on {plural(summary.refundsDueCount, "booking")}
+              </>
+            ) : (
+              "After refunds on cancelled bookings"
+            )
+          }
+        />
         <Stat
           label="Active bookings"
           value={
@@ -68,46 +79,25 @@ export default async function DashboardPage({ searchParams }: PageProps<"/bookin
         />
       </StatGroup>
 
-      {ledger.empty ? (
-        <EmptyState
-          icon={NotebookPen}
-          title="The ledger is empty"
-          description="Bookings you create appear here with their payments and balances, ready to issue a Bill of Supply."
-          action={
-            <Button variant="outline" nativeButton={false} render={<Link href="/bookings/new" />}>
-              <Plus />
-              Create the first booking
-            </Button>
-          }
-        />
-      ) : (
-        <div id="ledger" className="scroll-mt-24 space-y-4">
-          <BookingFilters destinations={ledger.destinations} />
-          {ledger.total > 0 ? (
-            <>
-              <LedgerTable bookings={ledger.items} totals={ledger.totals} archived={filters.archived} />
-              <LedgerPagination filters={filters} page={ledger} />
-            </>
-          ) : (
-            <EmptyState
-              icon={SearchX}
-              title={onlyArchivedView ? "No archived bookings" : "No bookings match"}
-              description={
-                onlyArchivedView
-                  ? "Bookings you archive appear here, ready to restore."
-                  : hasActiveFilters(filters)
-                  ? "Try a different search, or reset the filters."
-                  : "There are no bookings to show."
-              }
-              action={
-                <Button variant="outline" nativeButton={false} render={<Link href="/bookings" />}>
-                  Reset filters
-                </Button>
-              }
+      <RecordList
+        id="ledger"
+        empty={
+          ledger.empty && (
+            <NothingYet
+              icon={NotebookPen}
+              title="The ledger is empty"
+              description="Bookings you create appear here with their payments and balances, ready to issue a Bill of Supply."
+              newHref={routes.bookings.new}
+              newLabel="Create the first booking"
             />
-          )}
-        </div>
-      )}
+          )
+        }
+        filters={<BookingFilters destinations={ledger.destinations} tripDatePresets={tripDatePresets(today)} today={today} team={team} />}
+        table={<LedgerTable bookings={ledger.items} totals={ledger.totals} archived={filters.archived} />}
+        noMatches={<NoMatches plural="bookings" listHref={routes.bookings.list} archivedOnly={onlyArchivedView} filtered={hasActiveFilters(filters)} />}
+        page={ledger}
+        links={{ path: routes.bookings.list, params: bookingFilterParams(filters) }}
+      />
     </>
   );
 }

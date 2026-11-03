@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PAGE_HEADER } from "./layout-classes";
 
 interface PageHeaderProps {
   title: React.ReactNode;
@@ -15,14 +16,14 @@ interface PageHeaderProps {
   className?: string;
 }
 
+/** A header's buttons: they keep their own width (left-aligned on phones). */
+export function HeaderActions({ children }: { children: React.ReactNode }) {
+  return <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>;
+}
+
 export function PageHeader({ title, eyebrow, description, actions, back, className }: PageHeaderProps) {
   return (
-    <header
-      className={cn(
-        "rule-double mb-8 flex flex-col gap-5 pb-6 sm:flex-row sm:items-end sm:justify-between",
-        className
-      )}
-    >
+    <header className={cn(PAGE_HEADER, className)}>
       <div className="min-w-0 space-y-2">
         {back && (
           <Link
@@ -39,7 +40,7 @@ export function PageHeader({ title, eyebrow, description, actions, back, classNa
         </h1>
         {description && <p className="max-w-prose text-pretty text-muted-foreground">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <HeaderActions>{actions}</HeaderActions>}
     </header>
   );
 }

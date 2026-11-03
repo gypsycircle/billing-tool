@@ -4,7 +4,8 @@
 //   • 40 failed attempts across all clients per 15 minutes
 //
 // Every attempt is counted atomically BEFORE the code is checked, so a burst
-// of parallel requests cannot all slip in under the limit. A correct code then
+// of parallel requests cannot all slip in under the limit. The global counter
+// only counts attempts the client's own limit allowed. A correct code then
 // takes its own attempt back off: the client's counter is cleared and the
 // global one decremented — so only failures accumulate.
 //
@@ -47,12 +48,15 @@ interface RateLimitResult {
  * Call BEFORE checking the access code; `client` comes from rateLimitClientKey().
  */
 export async function registerLoginAttempt(client: string): Promise<RateLimitResult> {
-  const [perClient, global] = await withStore((s) => s.increment([clientKey(client), GLOBAL_KEY], WINDOW_MS));
-
-  const blocked =
-    perClient.count > PER_CLIENT_MAX_FAILURES ? perClient
-    : global.count > GLOBAL_MAX_FAILURES ? global
-    : null;
+  // The global counter only counts attempts the client's own limit lets
+  // through: one client hammering away is stopped by its own counter and
+  // can't run up the global one and lock everyone else out.
+  const blocked = await withStore(async (s) => {
+    const [perClient] = await s.increment([clientKey(client)], WINDOW_MS);
+    if (perClient.count > PER_CLIENT_MAX_FAILURES) return perClient;
+    const [global] = await s.increment([GLOBAL_KEY], WINDOW_MS);
+    return global.count > GLOBAL_MAX_FAILURES ? global : null;
+  });
 
   return blocked
     ? { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil(blocked.resetInMs / 1000)) }

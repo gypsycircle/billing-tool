@@ -3,6 +3,7 @@
 // nav, command menu, theme toggle and logout button are client islands.
 
 import Link from "next/link";
+import { routes } from "@/lib/domain/routes";
 import { BrandMark } from "@/components/brand/brand-mark";
 import { LogoutButton } from "@/components/auth/logout-button";
 import { CommandMenu } from "@/components/layout/command-menu";
@@ -11,15 +12,16 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 export function AppHeader() {
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur-sm supports-backdrop-filter:bg-background/75">
+    <header className="sticky top-0 z-40 border-b bg-background">
       <div className="mx-auto flex h-14 max-w-6xl items-stretch gap-4 px-4 sm:px-6">
         <Link
-          href="/bookings"
+          href={routes.bookings.list}
           className="flex items-center gap-3 rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
         >
           <BrandMark className="h-7 text-brand" />
-          <span className="hidden h-5 w-px bg-rule md:block" aria-hidden />
-          <span className="eyebrow hidden text-muted-foreground md:block">Billing ledger</span>
+          {/* The label needs the room four nav links leave only on wide screens */}
+          <span className="hidden h-5 w-px bg-rule lg:block" aria-hidden />
+          <span className="eyebrow hidden text-muted-foreground lg:block">Billing ledger</span>
         </Link>
 
         <div className="ml-2 hidden sm:block">

@@ -1,42 +1,25 @@
 // hooks/use-booking-actions.ts
-// Status changes for one booking: cancel, reactivate, archive, restore.
-// Each sends the version on screen (X-Booking-Version), so it can't overwrite a newer
-// save; if someone else changed the booking first, the page refreshes to show it.
+// A booking's status changes: archive and restore (useRecordActions), plus
+// reactivate (cancelling asks about the refund first: CancelBookingDialog). `inList`: from a list row, whose archive toast says
+// where to find it again (on its page, Restore is right there).
 
 "use client";
 
-import { useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { BOOKING_VERSION_HEADER, type BookingRef } from "@/lib/domain/types";
-import { useApiMutation } from "./use-api-mutation";
+import { routes } from "@/lib/domain/routes";
+import type { BookingRef } from "@/lib/domain/types";
+import { useRecordActions } from "./use-record-actions";
 
-export function useBookingActions(booking: Pick<BookingRef, "bookingId" | "invoiceNumber" | "updatedAt">) {
-  const router = useRouter();
-  const { mutate, pending } = useApiMutation<{ booking: BookingRef }>();
-  const url = `/api/bookings/${booking.bookingId}`;
-  const label = `No. ${booking.invoiceNumber}`;
-
-  const run = useCallback(
-    async (request: Parameters<typeof mutate>[1], success: string, after?: () => void) => {
-      const result = await mutate(url, { ...request, headers: { [BOOKING_VERSION_HEADER]: booking.updatedAt } });
-      if (result?.status === 412) router.refresh(); // show the newer version
-      if (!result?.data) return false;
-      toast.success(success);
-      after?.();
-      router.refresh();
-      return true;
-    },
-    [mutate, router, url, booking.updatedAt]
-  );
-
+export function useBookingActions(booking: Pick<BookingRef, "bookingId" | "invoiceNumber" | "updatedAt">, { inList = false } = {}) {
+  const title = `Booking No. ${booking.invoiceNumber}`;
+  const actions = useRecordActions({
+    url: routes.api.bookings.one(booking.bookingId),
+    version: booking.updatedAt,
+    title,
+    restoreBody: { bookingStatus: "Active" },
+    findArchived: inList ? "Show archived" : undefined,
+  });
   return {
-    pending,
-    cancel: () => run({ method: "PATCH", body: { bookingStatus: "Cancelled" } }, `Booking ${label} cancelled`),
-    reactivate: () => run({ method: "PATCH", body: { bookingStatus: "Active" } }, `Booking ${label} is active again`),
-    restore: () => run({ method: "PATCH", body: { bookingStatus: "Active" } }, `Booking ${label} restored`),
-    /** Archive, then optionally leave the page (e.g. from the detail view). */
-    archive: (afterArchive?: () => void) =>
-      run({ method: "DELETE" }, `Booking ${label} archived — you can restore it from Show archived`, afterArchive),
+    ...actions,
+    reactivate: () => actions.run({ method: "PATCH", body: { bookingStatus: "Active" } }, `${title} is active again`),
   };
 }

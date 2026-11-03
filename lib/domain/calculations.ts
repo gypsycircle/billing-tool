@@ -5,8 +5,9 @@
 //   total    = gross − discount
 //   balance  = total − amount paid
 //   status   = Unpaid (paid 0) | Partial | Paid (paid = total)
-// Used for live previews in the browser; the server recalculates before
-// every write, on every read, and before generating a PDF.
+// Used for live previews in the browser; the server works them out again on
+// every create and edit and stores them with the booking (so the database can
+// sum them), and pages and the bill read the stored amounts.
 
 import type { BookingAmounts, PaymentStatus, PricingInput } from "./types";
 

@@ -2,7 +2,9 @@
 // Validates the `next` parameter used to return to a page after login.
 // Used on the server (access page) and again in the browser before navigating.
 
-const FALLBACK = "/bookings";
+import { routes } from "./routes";
+
+const FALLBACK = routes.bookings.list;
 const MAX_LENGTH = 512;
 const BASE = "http://local.invalid";
 

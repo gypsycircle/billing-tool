@@ -17,14 +17,18 @@ import {
 import { EnvConfigError } from "../env";
 import {
   AccessCodeNotSetError,
-  BookingNotFoundError,
-  BookingValidationError,
-  BookingArchivedError,
+  ArchivedRecordError,
   BillUnavailableError,
-  DuplicateInvoiceNumberError,
+  BookingRuleError,
+  DuplicateNameError,
+  DuplicateNumberError,
+  InvalidAccessCodeError,
   MissingVersionError,
-  StaleBookingError,
+  NotFoundError,
+  StaleRecordError,
+  TooManyAttemptsError,
   UnauthorizedError,
+  ValidationError,
 } from "../errors";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +58,19 @@ export function jsonError(
   );
 }
 
+/** A file download (the bill), as private and no-store as every other answer; `inline` opens it in the browser. */
+export function fileResponse({ bytes, type, fileName, inline }: { bytes: Uint8Array; type: string; fileName: string; inline: boolean }): Response {
+  return new Response(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), {
+    headers: {
+      "Content-Type": type,
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${fileName}"`,
+      "Content-Length": String(bytes.byteLength),
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 /** 405 Method Not Allowed — no Allow header needed for our use case. */
 export function methodNotAllowed(): Response {
   return jsonError("Method not allowed.", 405);
@@ -73,19 +90,31 @@ export function handleApiError(err: unknown): Response {
   if (err instanceof UnauthorizedError) {
     return jsonError("Unauthorized. Please log in with a valid access code.", 401);
   }
-  if (err instanceof BookingNotFoundError) {
-    return jsonError("Booking not found.", 404);
+  if (err instanceof InvalidAccessCodeError) {
+    return jsonError(err.message, 401);
   }
-  if (err instanceof DuplicateInvoiceNumberError || err instanceof BookingArchivedError || err instanceof BillUnavailableError) {
+  if (err instanceof TooManyAttemptsError) {
+    return jsonError(err.message, 429, { "Retry-After": String(err.retryAfterSeconds) });
+  }
+  if (err instanceof NotFoundError) {
+    return jsonError(err.message, 404);
+  }
+  if (
+    err instanceof DuplicateNumberError ||
+    err instanceof DuplicateNameError ||
+    err instanceof ArchivedRecordError ||
+    err instanceof BillUnavailableError ||
+    err instanceof BookingRuleError
+  ) {
     return jsonError(err.message, 409);
   }
-  if (err instanceof StaleBookingError) {
+  if (err instanceof StaleRecordError) {
     return jsonError(err.message, 412);
   }
   if (err instanceof MissingVersionError) {
     return jsonError(err.message, 428);
   }
-  if (err instanceof BookingValidationError) {
+  if (err instanceof ValidationError) {
     return Response.json(
       { error: err.message, fieldErrors: err.fieldErrors },
       { status: 422, headers: { "Cache-Control": "no-store" } }

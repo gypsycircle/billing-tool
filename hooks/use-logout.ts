@@ -1,34 +1,29 @@
 // hooks/use-logout.ts
-// Shared logout flow for the header button and the command menu.
+// Shared logout flow for the header button and the command menu. Stays
+// pending while the page goes to the access screen.
 
 "use client";
 
-import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/client/api-client";
+import { routes } from "@/lib/domain/routes";
+import { useSingleFlight } from "./use-single-flight";
 
-export function useLogout(): { logout: () => Promise<void>; pending: boolean } {
+export function useLogout(): { logout: () => Promise<boolean | null>; pending: boolean } {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const inFlight = useRef(false);
-
-  const logout = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setPending(true);
-
-    try {
-      const res = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
-      if (!res.ok) throw new Error(`Logout failed (${res.status})`);
-      router.replace("/");
+  const { run, pending } = useSingleFlight(
+    async () => {
+      const result = await apiFetch(routes.api.auth.logout, { method: "POST" });
+      if (result.error) {
+        toast.error("Couldn't log out. Please try again.");
+        return false;
+      }
+      router.replace(routes.access);
       router.refresh();
-      // Stay "pending" while navigating away.
-    } catch {
-      toast.error("Couldn't log out. Please try again.");
-      inFlight.current = false;
-      setPending(false);
-    }
-  }, [router]);
-
-  return { logout, pending };
+      return true;
+    },
+    { holdOnSuccess: (loggedOut) => loggedOut }
+  );
+  return { logout: run, pending };
 }

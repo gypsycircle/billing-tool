@@ -5,7 +5,7 @@ describe("safeRedirectPath", () => {
   it.each([
     ["/bookings/new", "/bookings/new"],
     ["/bookings/abc?tab=pdf#top", "/bookings/abc?tab=pdf#top"],
-    ["/bookings/../", "/bookings"],
+    ["/bookings/../", "/bookings"], // resolves to "/", the access page: the fallback
     ["/bookings?q=a%20b", "/bookings?q=a%20b"],
   ])("keeps same-origin path %s", (input, output) => {
     expect(safeRedirectPath(input)).toBe(output);

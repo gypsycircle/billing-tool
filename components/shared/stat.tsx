@@ -1,20 +1,23 @@
 // components/shared/stat.tsx
 // Summary figures, set like the totals block of a ledger page.
 //   <StatGroup>
-//     <Stat label="Outstanding" value={<Money amount={…} />} hint="…" />
+//     <Stat label="Outstanding" value={<Money amount={…} />} change={…} hint="…" />
 //   </StatGroup>
 
 import { cn } from "@/lib/utils";
+import { STAT_COLUMNS, STAT_FIGURE, STAT_GRID } from "./layout-classes";
 
-/** Joined cells separated by hairlines (gap-px over the border colour). */
-export function StatGroup({ children, className }: { children: React.ReactNode; className?: string }) {
+export function StatGroup({
+  children,
+  columns = 4,
+  className,
+}: {
+  children: React.ReactNode;
+  columns?: keyof typeof STAT_COLUMNS;
+  className?: string;
+}) {
   return (
-    <dl
-      className={cn(
-        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border lg:grid-cols-4",
-        className
-      )}
-    >
+    <dl className={cn(STAT_GRID, STAT_COLUMNS[columns], className)}>
       {children}
     </dl>
   );
@@ -23,17 +26,23 @@ export function StatGroup({ children, className }: { children: React.ReactNode; 
 export function Stat({
   label,
   value,
+  change,
   hint,
 }: {
   label: string;
   value: React.ReactNode;
+  /** How the value moved, shown beside it (the dashboard's ChangeBadge). */
+  change?: React.ReactNode;
   hint?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2 bg-card px-5 py-5">
       <dt className="eyebrow text-muted-foreground">{label}</dt>
-      <dd className="font-heading text-2xl leading-none font-medium tabular sm:text-[1.75rem]">{value}</dd>
-      {hint && <dd className="text-xs text-muted-foreground">{hint}</dd>}
+      <dd className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className={STAT_FIGURE}>{value}</span>
+        {change}
+      </dd>
+      {hint && <dd className="space-y-0.5 text-xs text-muted-foreground">{hint}</dd>}
     </div>
   );
 }

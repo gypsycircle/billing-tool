@@ -86,7 +86,7 @@ export function defaultDueDate(tripStartDate: string, invoiceDate: string): stri
   return format(max([subDays(tripStart, 14), invoice]), DDMMYYYY);
 }
 
-/** DD/MM/YYYY → YYYY-MM-DD (for <input type="date">). */
+/** DD/MM/YYYY → YYYY-MM-DD (date ranges in the URL). */
 export function toISODate(value: string): string {
   const date = parseDDMMYYYY(value);
   return date ? format(date, ISO_DATE) : "";
@@ -96,4 +96,25 @@ export function toISODate(value: string): string {
 export function fromISODate(iso: string): string {
   const date = parseUTC(iso, ISO_DATE, EXACT_ISO_DATE);
   return date ? format(date, DDMMYYYY) : "";
+}
+
+/** DD/MM/YYYY → that day at local midnight, for calendar widgets (they work in the browser's time). */
+export function toLocalDay(value: string): Date | undefined {
+  const date = parseDDMMYYYY(value);
+  return date ? new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) : undefined;
+}
+
+/** A calendar widget's day (local midnight) → DD/MM/YYYY. */
+export function fromLocalDay(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+/** "29 Oct 2026", "1 Sep – 30 Sep 2026", or "1 Dec 2025 – 31 Jan 2026". */
+export function rangeLabel(from: string, to: string): string {
+  const start = parseDDMMYYYY(from)!;
+  const end = parseDDMMYYYY(to)!;
+  if (from === to) return format(start, "d MMM yyyy");
+  const sameYear = start.getUTCFullYear() === end.getUTCFullYear();
+  return `${format(start, sameYear ? "d MMM" : "d MMM yyyy")} – ${format(end, "d MMM yyyy")}`;
 }

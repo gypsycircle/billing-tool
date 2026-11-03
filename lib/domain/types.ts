@@ -22,7 +22,7 @@ export interface Booking {
   dueDate: string;            // DD/MM/YYYY
   customerName: string;       // under BILL TO
   customerPhone: string;      // mobile; printed under BILL TO
-  customerEmail: string;      // customer email ("" if none) — never printed; the bill is emailed here
+  customerEmail: string;      // customer email ("" if none) — never printed
   packageName: string;        // SERVICES title
   destination: string;        // printed in the invoice band
   batchName: string;          // BATCH column
@@ -36,11 +36,32 @@ export interface Booking {
   discountPercentage: number; // derived — discount ÷ gross × 100
   totalAmount: number;        // derived — gross − discount
   amountPaid: number;         // cumulative received
+  slotAmount: number;         // non-refundable if cancelled — never printed
   balanceAmount: number;      // derived — total − paid
   paymentStatus: PaymentStatus; // derived
   bookingStatus: BookingStatus;
   invoiceNote: string;        // printed under NOTES
   internalNotes: string;      // never printed
+  cancelledOn: string | null; // DD/MM/YYYY — the day it was cancelled
+  refundAmount: number;       // what goes back; cancelled bookings only
+  refundedOn: string | null;  // DD/MM/YYYY — the day it went back; null while still due
+  closedBy: ClosedBy | null;  // who closed it — never printed; null on bookings saved before it existed
+}
+
+/** The team member who closed a booking, and their name at the time. */
+export interface ClosedBy {
+  refId: string;
+  label: string;
+}
+
+/**
+ * The Closed by dropdown: active team members by name (value = ID), plus the
+ * booking's own person if they've been archived since (it saves unchanged).
+ */
+export function closedByChoices(team: readonly { id: string; name: string }[], saved: ClosedBy | null = null): Record<string, string> {
+  const choices: Record<string, string> = Object.fromEntries(team.map(({ id, name }) => [id, name]));
+  if (saved && !(saved.refId in choices)) choices[saved.refId] = `${saved.label} · Archived`;
+  return choices;
 }
 
 /** Values the user supplies when creating a booking. */
@@ -61,6 +82,7 @@ export interface BookingInput {
   ratePerPerson: number;
   discountAmount: number;
   amountPaid: number;
+  slotAmount: number;
   invoiceNote: string;
   internalNotes: string;
 }
@@ -68,7 +90,7 @@ export interface BookingInput {
 /** Fields the server assigns on create and never lets the user change. */
 type AssignedField = "invoiceNumber" | "invoiceDate" | "dueDate";
 
-/** What the user enters: everything but the assigned invoice number and dates. */
+/** What the rules on what the user enters read: everything but the assigned invoice number and dates. */
 export type BookingDraft = Omit<BookingInput, AssignedField>;
 
 /** The values the calculation needs. */
@@ -86,13 +108,6 @@ export interface BookingAmounts {
   paymentStatus: PaymentStatus;
 }
 
-/**
- * Request header carrying the version (updatedAt) the user is changing, on
- * PATCH and DELETE. Not If-Match: that standard header is enforced by Vercel's
- * edge as an ETag precondition, which answers 412 before the app runs.
- */
-export const BOOKING_VERSION_HEADER = "X-Booking-Version";
-
 /** What a write returns (POST, PATCH, DELETE): enough to link to the booking and keep editing it. */
 export type BookingRef = Pick<Booking, "bookingId" | "invoiceNumber" | "updatedAt" | "bookingStatus">;
 
@@ -102,15 +117,17 @@ export function bookingRefOf(booking: BookingRef): BookingRef {
 }
 
 /** What the status actions and bill download in the browser need (the row menu, the detail header). */
-export type BookingActionTarget = BookingRef & Pick<Booking, "customerName">;
+export type BookingActionTarget = BookingRef & Pick<Booking, "customerName" | "tripStartDate" | "totalAmount" | "amountPaid" | "slotAmount" | "refundedOn">;
 
 export function actionTargetOf(booking: BookingActionTarget): BookingActionTarget {
-  return { ...bookingRefOf(booking), customerName: booking.customerName };
+  const { customerName, tripStartDate, totalAmount, amountPaid, slotAmount, refundedOn } = booking;
+  return { ...bookingRefOf(booking), customerName, tripStartDate, totalAmount, amountPaid, slotAmount, refundedOn };
 }
 
 /** One ledger row: only the columns the table shows, plus what its menu needs. */
 export const LEDGER_ROW_FIELDS = [
   "bookingId",
+  "closedBy",
   "invoiceNumber",
   "updatedAt",
   "customerName",
@@ -125,6 +142,9 @@ export const LEDGER_ROW_FIELDS = [
   "balanceAmount",
   "paymentStatus",
   "bookingStatus",
+  "slotAmount",
+  "refundAmount",
+  "refundedOn",
 ] as const satisfies readonly (keyof Booking)[];
 
 export type LedgerRow = Pick<Booking, (typeof LEDGER_ROW_FIELDS)[number]>;

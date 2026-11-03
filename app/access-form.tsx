@@ -7,6 +7,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Loader2, CircleAlert, TimerReset } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FORM_BUTTON } from "@/components/shared/layout-classes";
 import {
   InputGroup,
   InputGroupAddon,
@@ -14,6 +15,7 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import { routes } from "@/lib/domain/routes";
 import { safeRedirectPath } from "@/lib/domain/safe-redirect";
 import { formatCountdown, useCountdown } from "@/hooks/use-countdown";
 
@@ -56,7 +58,7 @@ export function AccessForm({ redirectTo }: AccessFormProps) {
       setIsLoading(true);
 
       try {
-        const response = await fetch("/api/auth/login", {
+        const response = await fetch(routes.api.auth.login, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -119,7 +121,7 @@ export function AccessForm({ redirectTo }: AccessFormProps) {
             disabled={isLoading}
             aria-invalid={Boolean(error) || undefined}
             aria-describedby={message ? "access-message" : undefined}
-            className="text-base"
+            // className="text-base"
           />
           <InputGroupAddon align="inline-end">
             <InputGroupButton
@@ -159,7 +161,7 @@ export function AccessForm({ redirectTo }: AccessFormProps) {
         type="submit"
         size="lg"
         disabled={isLoading || isLocked || !code.trim()}
-        className="group h-11 w-full text-[0.9375rem]"
+        className={cn("group", FORM_BUTTON)}
       >
         {isLoading ? (
           <>

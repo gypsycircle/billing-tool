@@ -314,7 +314,7 @@ describe("renderBillOfSupply — content", () => {
     const { runs } = await render(SAMPLE, "sample");
     const sizeOf = (text: string) => runs.find((r) => r.text.replace(/₹\s*/, "") === text)!.size;
     expect(new Set(["3,50,000", "40,000", "3,10,000"].map((amount) => runs.filter((r) => r.text === amount && r.baseline > first(runs, "SUBTOTAL").baseline + 5).map((r) => r.size)).flat()).size).toBe(1);
-    expect(sizeOf("FDRL0001413")).toBeCloseTo(runs.find((r) => r.text.startsWith("Refunds will be credited"))!.size, 2);
+    expect(sizeOf("FDRL0001413")).toBeCloseTo(runs.find((r) => r.text.startsWith("Approved refunds will be credited"))!.size, 2);
   });
 
   it("leaves the same gap under Bank details, Payment QR code and Terms and conditions", async () => {
@@ -339,7 +339,7 @@ describe("renderBillOfSupply — content", () => {
     }
   });
 
-  it("numbers the terms 1–6 with lettered points and the postponement note, across the full width", async () => {
+  it("numbers the terms 1–7 with lettered points and the postponement note, across the full width", async () => {
     const { runs } = await render(SAMPLE, "sample");
     const heading = first(runs, "TERMS AND CONDITIONS");
     const below = runs.filter((r) => r.baseline > heading.baseline);
@@ -347,15 +347,19 @@ describe("renderBillOfSupply — content", () => {
     expect(numbers).toEqual(TERMS.map((_, i) => `${i + 1}.`));
     const letters = below.filter((r) => /^[a-d]\.$/.test(r.text)).map((r) => r.text);
     expect(letters).toEqual(["a.", "b.", "c.", "d.", "a.", "b.", "c.", "d."]);
-    // Point 6: the postponement policy, then "Important:" with two bullets
-    expect(first(runs, "Postponement policy:").baseline).toBeGreaterThan(first(runs, "Cancellation policy:").baseline);
+    // The money points first, in the order a customer meets them
+    const leads = ["Payment:", "Slot booking amount:", "Cancellation policy:", "Refunds:", "Postponement policy:", "Travel documents:", "Liability:"];
+    expect(TERMS.map((t) => t.lead)).toEqual(leads);
+    const leadBaselines = leads.map((lead) => first(runs, lead).baseline);
+    expect(leadBaselines).toEqual([...leadBaselines].sort((a, b) => a - b));
+    // The postponement policy ends with "Important:" and its bullet
     const important = first(runs, "Important:");
-    expect(below.filter((r) => r.text === "•" && r.baseline > important.baseline)).toHaveLength(2);
+    expect(below.filter((r) => r.text === "•" && r.baseline > important.baseline)).toHaveLength(1);
     // Lines run well past the middle of the page (the old bill used half the width)
     expect(Math.max(...below.map((r) => r.x1))).toBeGreaterThan(PAGE_WIDTH - MARGIN - 80);
     // A little space between points: more than between the lines of one point
     const baselines = below.filter((r) => /^\d\.$/.test(r.text)).map((r) => r.baseline);
-    for (let i = 1; i < baselines.length; i++) expect(baselines[i] - baselines[i - 1]).toBeGreaterThan(11.5 + 3);
+    for (let i = 1; i < baselines.length; i++) expect(baselines[i] - baselines[i - 1]).toBeGreaterThan(11 + 2.5);
   });
 });
 

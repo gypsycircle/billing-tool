@@ -4,10 +4,12 @@
 // itself ("verify close to the data"), even though callers also check.
 //
 // Writes:  validate (Zod) → business rules (version, archived, invoice number
-//          and dates) → calculate → fits the bill → one atomic database write.
-// The invoice number, invoice date and due date are assigned here, never
-// taken from the client: INV_{year}{counter} from an atomic per-year counter,
-// today (IST), and trip start − 14 days (re-worked out when the trip start changes).
+//          and dates, destination / package / route from their lists) →
+//          calculate → fits the bill → one atomic database write.
+// The invoice number and due date are assigned here, never taken from the
+// client: INV_{year}{counter} from an atomic per-year counter, and trip start
+// − 14 days (re-worked out when the trip start changes). The invoice date is
+// picked on create (today or yesterday, IST) and never changes.
 // Every change carries the version (updatedAt) the user was looking at, and the
 // write only happens if the booking is still at that version, so a stale
 // screen can never silently overwrite someone else's newer save.
@@ -15,46 +17,57 @@
 import "server-only";
 
 import { cache } from "react";
+import type { z } from "zod";
 import { getYear } from "date-fns";
-import { z } from "zod";
 import {
   bookingDraftSchema,
   bookingIdSchema,
   createBookingSchema,
+  invoiceDateIssue,
+  refundChangeSchema,
+  statusChangeSchema,
   tripEndIssue,
   tripStartIssue,
   updateBookingSchema,
 } from "@/lib/domain/booking.schema";
+import { bookingHistory, historyChanged, type HistoryEvent, type HistoryRow } from "@/lib/domain/booking-history";
 import { calculateBookingAmounts } from "@/lib/domain/calculations";
-import { defaultDueDate, parseDDMMYYYY, todayIST } from "@/lib/domain/dates";
+import { addDays, compareDDMMYYYY, defaultDueDate, parseDDMMYYYY, toISODate, todayIST } from "@/lib/domain/dates";
 import type { BookingFilters } from "@/lib/domain/filters";
-import { formatInvoiceNumber, nextSequence } from "@/lib/domain/invoice-number";
-import type { Booking, BookingInput, BookingRef, BookingStatus } from "@/lib/domain/types";
 import {
-  checkDatabase,
+  BOOKING_LIST_FIELD_IDS as LIST_FIELD_IDS,
+  BOOKING_LIST_FIELDS as LIST_FIELDS,
+  GENERAL_KINDS,
+  type BookingListField as ListField,
+  type BookingListOptions,
+} from "@/lib/domain/general";
+import { formatInvoiceNumber, nextSequence } from "@/lib/domain/invoice-number";
+import { formatAmount } from "@/lib/domain/money";
+import { nameKeyOf } from "@/lib/domain/named-records";
+import { isArchived } from "@/lib/domain/records";
+import { refundQuote } from "@/lib/domain/refunds";
+import type { Booking, BookingInput, BookingRef, BookingStatus, ClosedBy } from "@/lib/domain/types";
+import {
   findBillBooking,
   findBooking,
   findByIdempotencyKey,
   findVersion,
   insertBooking,
-  issueInvoiceSequence,
   ledgerPage,
-  peekInvoiceSequence,
   setStatusIfVersion,
   updateBookingIfVersion,
-  type DbHealth,
   type LedgerResult,
 } from "../db/bookings-repo";
+import type { BookingHistoryDoc, PaymentDoc } from "../db/collections";
+import { issueSequence, peekSequence } from "../db/counters-repo";
+import { findHistory, findHistoryBill, historyEntry } from "../db/history-repo";
+import { paymentEntry } from "../db/payments-repo";
+import { teamRepo } from "../db/team-repo";
 import { getEnv } from "../env";
-import {
-  BillUnavailableError,
-  BookingArchivedError,
-  BookingNotFoundError,
-  BookingValidationError,
-  MissingVersionError,
-  StaleBookingError,
-} from "../errors";
+import { ArchivedRecordError, BillUnavailableError, BookingRuleError, NotFoundError, ValidationError } from "../errors";
+import { activeListNames, getGeneralOptions } from "../general/service";
 import { verifySession } from "../guards";
+import { assertCurrentVersion, assertRecordId, assertVersionFor, nextTimestamp, notWritten, onePerKey, statusOrEdit, validate } from "../records/rules";
 import type { BillBooking } from "../pdf/content";
 import type { BillProblems } from "../pdf/layout";
 import { BillDoesNotFitError, loadBillFitCheck, renderBillOfSupply } from "../pdf/render";
@@ -63,33 +76,10 @@ import { BillDoesNotFitError, loadBillFitCheck, renderBillOfSupply } from "../pd
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Parses with a Zod schema or throws BookingValidationError (first message per field). */
-function validate<T>(schema: z.ZodType<T>, input: unknown): T {
-  const result = schema.safeParse(input);
-  if (result.success) return result.data;
+const assertBookingId = (id: string) => assertRecordId("booking", bookingIdSchema, id);
 
-  const fieldErrors: Record<string, string> = {};
-  for (const issue of result.error.issues) {
-    const field = issue.path.length > 0 ? issue.path.join(".") : "form";
-    fieldErrors[field] ??= issue.message;
-  }
-  throw new BookingValidationError(fieldErrors);
-}
-
-function assertBookingId(id: string): void {
-  if (!bookingIdSchema.safeParse(id).success) throw new BookingNotFoundError();
-}
-
-/** The client must say which version it is changing. */
-function assertVersionGiven(expectedUpdatedAt: string): void {
-  if (!expectedUpdatedAt) throw new MissingVersionError();
-}
-
-/** The version the client saw must still be the stored one. */
-function assertCurrentVersion(booking: Booking, expectedUpdatedAt: string): void {
-  assertVersionGiven(expectedUpdatedAt);
-  if (booking.updatedAt !== expectedUpdatedAt) throw new StaleBookingError();
-}
+/** What a refund was worked out from, so it can't change while cancelled. */
+const CANCELLED_LOCKED = ["travellers", "ratePerPerson", "discountAmount", "amountPaid", "slotAmount"] as const;
 
 /**
  * Every saved booking must print: a value that can't fit its field on the Bill
@@ -97,7 +87,7 @@ function assertCurrentVersion(booking: Booking, expectedUpdatedAt: string): void
  */
 function assertFitsBill(check: (booking: BillBooking) => BillProblems, booking: BillBooking): void {
   const problems = check(booking);
-  if (Object.keys(problems).length > 0) throw new BookingValidationError(problems as Record<string, string>);
+  if (Object.keys(problems).length > 0) throw new ValidationError(problems as Record<string, string>);
 }
 
 const yearOf = (ddmmyyyy: string) => getYear(parseDDMMYYYY(ddmmyyyy)!);
@@ -109,24 +99,43 @@ function assertTripDatesAllowed(dates: { tripStartDate?: string; tripEndDate?: s
   const end = dates.tripEndDate === undefined ? null : tripEndIssue(dates.tripEndDate, invoiceDate);
   if (start) fieldErrors.tripStartDate = start;
   if (end) fieldErrors.tripEndDate = end;
-  if (start || end) throw new BookingValidationError(fieldErrors);
+  if (start || end) throw new ValidationError(fieldErrors);
 }
 
-/** A timestamp guaranteed to differ from the previous version's (versions must change on every save). */
-function nextTimestamp(previous: string): string {
-  const now = new Date();
-  const prev = Date.parse(previous);
-  return (Number.isFinite(prev) && now.getTime() <= prev ? new Date(prev + 1) : now).toISOString();
+/**
+ * Destination, package and route must be active items of their lists; the
+ * list's own spelling is what gets stored. Only the fields given are checked,
+ * and an empty route is fine (it's optional).
+ */
+async function fromLists(values: Partial<Record<ListField, string>>): Promise<Partial<Record<ListField, string>>> {
+  const given = LIST_FIELD_IDS.filter((field) => values[field]);
+  const names = await activeListNames(Object.fromEntries(given.map((field) => [LIST_FIELDS[field], values[field]])));
+  const fieldErrors: Record<string, string> = {};
+  const matched: Partial<Record<ListField, string>> = { ...values };
+  for (const field of given) {
+    const kind = LIST_FIELDS[field];
+    if (names[kind]) matched[field] = names[kind];
+    else fieldErrors[field] = `Pick a ${GENERAL_KINDS[kind].one} from the list (add new ones in Settings).`;
+  }
+  if (Object.keys(fieldErrors).length > 0) throw new ValidationError(fieldErrors);
+  return matched;
+}
+
+/** Who closed the booking: an active team member, whose name is stored. The saved one stays, even if archived since. */
+async function closedByOf(id: string, saved: ClosedBy | null): Promise<ClosedBy> {
+  if (saved?.refId === id) return saved;
+  const member = await teamRepo.find(id);
+  if (!member || member.status !== "Active") throw new ValidationError({ closedById: "Pick who closed this booking from the team." });
+  return { refId: member.id, label: member.name };
 }
 
 /**
  * Writes `updated` only if the booking is still at `expectedUpdatedAt`.
  * When nothing was written, works out why: gone (404) or changed (412).
  */
-async function writeIfUnchanged(updated: Booking, expectedUpdatedAt: string): Promise<Booking> {
-  if (await updateBookingIfVersion(updated, expectedUpdatedAt)) return updated;
-  if ((await findVersion(updated.bookingId)) === null) throw new BookingNotFoundError();
-  throw new StaleBookingError();
+async function writeIfUnchanged(updated: Booking, expectedUpdatedAt: string, payment: PaymentDoc | null, history: BookingHistoryDoc | null): Promise<Booking> {
+  if (await updateBookingIfVersion(updated, expectedUpdatedAt, payment, history)) return updated;
+  return notWritten("booking", () => findVersion(updated.bookingId));
 }
 
 // ---------------------------------------------------------------------------
@@ -134,16 +143,16 @@ async function writeIfUnchanged(updated: Booking, expectedUpdatedAt: string): Pr
 // ---------------------------------------------------------------------------
 
 /**
- * The dashboard: one page of bookings for the filters, the count and totals
+ * The bookings ledger: one page of bookings for the filters, the count and totals
  * of every match, the summary tiles and the destination list.
  */
-export async function getLedger(filters: BookingFilters): Promise<LedgerResult> {
+export async function getBookingLedger(filters: BookingFilters): Promise<LedgerResult> {
   await verifySession();
   return ledgerPage(filters, todayIST());
 }
 
 /**
- * One booking by its UUID. Throws BookingNotFoundError.
+ * One booking by its UUID. Throws NotFoundError.
  * Cached per render, so components of one page that ask for the same booking
  * share a single read.
  */
@@ -152,54 +161,95 @@ export const getBooking = cache(async (id: string): Promise<Booking> => {
   assertBookingId(id);
 
   const booking = await findBooking(id);
-  if (!booking) throw new BookingNotFoundError();
+  if (!booking) throw new NotFoundError("booking");
   return booking;
 });
 
+/** Invoice numbers allow / (e.g. GC/2026/7): the download's name keeps to safe characters. */
+function billFileName(invoiceNumber: string, day?: string): string {
+  const safe = invoiceNumber.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return `Bill-of-Supply-${safe || "invoice"}${day ? `-${day}` : ""}.pdf`;
+}
+
 /**
- * The Bill of Supply PDF, drawn from the latest saved booking. Archived
- * bookings have none until restored.
+ * The Bill of Supply PDF, drawn from the latest saved booking, with its file
+ * name. Archived bookings have none until restored.
  */
-export async function getBillOfSupply(id: string): Promise<{ pdf: Uint8Array; invoiceNumber: string }> {
+export async function getBillOfSupply(id: string): Promise<BillFile> {
   await verifySession();
   assertBookingId(id);
   const booking = await findBillBooking(id); // only what the bill prints
-  if (!booking) throw new BookingNotFoundError();
-  if (booking.bookingStatus === "Archived") throw new BillUnavailableError();
+  if (!booking) throw new NotFoundError("booking");
+  if (isArchived(booking)) throw new BillUnavailableError();
+  return billFile(booking, billFileName(booking.invoiceNumber));
+}
+
+/** A booking's history, newest first. */
+export async function getBookingHistory(id: string): Promise<HistoryRow[]> {
+  await verifySession();
+  assertBookingId(id);
+  return bookingHistory(await findHistory(id));
+}
+
+/** The bill as it stood at one point in the booking's history. Archived bookings have no bill. */
+export async function getHistoryBill(id: string, entryId: string): Promise<BillFile> {
+  await verifySession();
+  assertBookingId(id);
+  assertRecordId("history entry", bookingIdSchema, entryId);
+  const [booking, entry] = await Promise.all([findBillBooking(id), findHistoryBill(id, entryId)]);
+  if (!booking) throw new NotFoundError("booking");
+  if (isArchived(booking)) throw new BillUnavailableError();
+  if (!entry) throw new NotFoundError("history entry");
+  return billFile(entry.bill, billFileName(entry.bill.invoiceNumber, toISODate(entry.changedOn)));
+}
+
+type BillFile = { bytes: Uint8Array; type: "application/pdf"; fileName: string; invoiceNumber: string };
+
+async function billFile(bill: BillBooking, fileName: string): Promise<BillFile> {
   try {
-    return { pdf: await renderBillOfSupply(booking), invoiceNumber: booking.invoiceNumber };
+    const bytes = await renderBillOfSupply(bill);
+    return { bytes, type: "application/pdf", fileName, invoiceNumber: bill.invoiceNumber };
   } catch (err) {
     // A booking edited outside the app can hold values the bill can't fit
-    if (err instanceof BillDoesNotFitError) throw new BookingValidationError(err.problems as Record<string, string>);
+    if (err instanceof BillDoesNotFitError) throw new ValidationError(err.problems as Record<string, string>);
     throw err;
   }
 }
 
 /**
- * The invoice number a booking saved now would most likely get. Shown on the
+ * The invoice number a booking saved now would most likely get, for each date
+ * it can have (today, yesterday: they differ only on 1 January). Shown on the
  * new-booking form; the number is assigned on save.
  */
-export async function suggestInvoiceNumber(): Promise<string> {
+export async function suggestInvoiceNumbers(): Promise<Record<string, string>> {
   await verifySession();
-  const year = yearOf(todayIST());
-  return formatInvoiceNumber(year, nextSequence(await peekInvoiceSequence(year), getEnv().INITIAL_INVOICE_NUMBER));
+  const today = todayIST();
+  const dates = [today, addDays(today, -1)];
+  const numbers = await Promise.all(
+    dates.map(async (date) => {
+      const year = yearOf(date);
+      return formatInvoiceNumber(year, nextSequence(await peekSequence("invoice", year), getEnv().INITIAL_INVOICE_NUMBER));
+    })
+  );
+  return Object.fromEntries(dates.map((date, i) => [date, numbers[i]]));
 }
 
-/** Database connectivity for /api/health (the route has checked the session). */
-export function checkDatabaseHealth(): Promise<DbHealth> {
-  return checkDatabase();
+/** The booking form's dropdowns: each list's active names (destination, package, route), by name. */
+export async function getBookingListOptions(): Promise<BookingListOptions> {
+  await verifySession();
+  const lists = await Promise.all(LIST_FIELD_IDS.map((field) => getGeneralOptions(LIST_FIELDS[field])));
+  return Object.fromEntries(LIST_FIELD_IDS.map((field, i) => [field, lists[i].map((option) => option.name)])) as BookingListOptions;
 }
 
 // ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
 
-/** Creates in flight on this server instance, by idempotency key. */
-const createsInFlight = new Map<string, Promise<Booking>>();
+const oneCreatePerKey = onePerKey<Booking>();
 
 /**
- * Creates a booking with the next invoice number, today's invoice date and the
- * default due date. Repeats with the same idempotency key (double submit,
+ * Creates a booking with the next invoice number (of its invoice date's year)
+ * and the default due date. Repeats with the same idempotency key (double submit,
  * retry) return the first booking instead of creating another: a repeat that
  * arrives while the first is still saving waits for it (so it never takes an
  * invoice number of its own), and the database's unique key on idempotencyKey
@@ -207,22 +257,16 @@ const createsInFlight = new Map<string, Promise<Booking>>();
  */
 export async function createBooking(input: unknown, idempotencyKey?: string): Promise<Booking> {
   await verifySession();
-  if (!idempotencyKey) return createNewBooking(input);
-
-  const inFlight = createsInFlight.get(idempotencyKey);
-  if (inFlight) return inFlight;
-  const created = createNewBooking(input, idempotencyKey).finally(() => createsInFlight.delete(idempotencyKey));
-  createsInFlight.set(idempotencyKey, created);
-  return created;
+  return oneCreatePerKey(idempotencyKey, () => createNewBooking(input, idempotencyKey));
 }
 
 async function createNewBooking(input: unknown, idempotencyKey?: string): Promise<Booking> {
-  // Email is optional: a create without the key means "no email"
-  const draft = validate(
-    bookingDraftSchema,
-    input && typeof input === "object" && !("customerEmail" in input) ? { ...input, customerEmail: "" } : input
-  );
-  const invoiceDate = todayIST();
+  const today = todayIST();
+  // Email, slot amount and invoice date are optional: a create without them means "no email", ₹0, today
+  const draft = validate(bookingDraftSchema, input && typeof input === "object" ? { customerEmail: "", slotAmount: 0, invoiceDate: today, ...input } : input);
+  const { invoiceDate, closedById } = draft;
+  const dateIssue = invoiceDateIssue(invoiceDate, today);
+  if (dateIssue) throw new ValidationError({ invoiceDate: dateIssue });
   assertTripDatesAllowed(draft, invoiceDate);
 
   const [earlier, fitsBill] = await Promise.all([
@@ -230,6 +274,8 @@ async function createNewBooking(input: unknown, idempotencyKey?: string): Promis
     loadBillFitCheck(),
   ]);
   if (earlier) return earlier;
+  Object.assign(draft, await fromLists(draft));
+  const closedBy = await closedByOf(closedById, null);
 
   // Everything is checked before a number is taken, so a refused booking never uses one up
   const year = yearOf(invoiceDate);
@@ -238,7 +284,7 @@ async function createNewBooking(input: unknown, idempotencyKey?: string): Promis
   const checked = validate(createBookingSchema, { ...draft, invoiceNumber: longestNumber, invoiceDate, dueDate });
   assertFitsBill(fitsBill, { ...checked, ...calculateBookingAmounts(checked) });
 
-  const sequence = await issueInvoiceSequence(year, getEnv().INITIAL_INVOICE_NUMBER);
+  const sequence = await issueSequence("invoice", year, getEnv().INITIAL_INVOICE_NUMBER);
   const data: BookingInput = { ...checked, invoiceNumber: formatInvoiceNumber(year, sequence) };
 
   const now = new Date().toISOString();
@@ -249,14 +295,19 @@ async function createNewBooking(input: unknown, idempotencyKey?: string): Promis
     createdAt: now,
     updatedAt: now,
     bookingStatus: "Active",
+    cancelledOn: null,
+    refundAmount: 0,
+    refundedOn: null,
+    closedBy,
   };
-  return insertBooking(booking, idempotencyKey);
+  // What was paid at booking time is the first entry of cash collected
+  return insertBooking(booking, paymentEntry(booking.bookingId, booking.amountPaid, invoiceDate, "create"), historyEntry(booking.bookingId, invoiceDate, booking), idempotencyKey);
 }
 
 /**
  * Updates a booking. The change is merged onto the stored record and the
  * whole result is re-validated, so cross-field rules always hold.
- * `expectedUpdatedAt` is the version the user edited (sent as X-Booking-Version).
+ * `expectedUpdatedAt` is the version the user edited (sent as X-Record-Version).
  */
 export async function updateBooking(id: string, input: unknown, expectedUpdatedAt: string): Promise<Booking> {
   await verifySession();
@@ -264,9 +315,27 @@ export async function updateBooking(id: string, input: unknown, expectedUpdatedA
   const changes = validate(updateBookingSchema, input);
 
   const [booking, fitsBill] = await Promise.all([findBooking(id), loadBillFitCheck()]);
-  if (!booking) throw new BookingNotFoundError(); // before the version: an unknown booking is 404, not 428
-  assertCurrentVersion(booking, expectedUpdatedAt);
-  if (booking.bookingStatus === "Archived") throw new BookingArchivedError();
+  if (!booking) throw new NotFoundError("booking"); // before the version: an unknown booking is 404, not 428
+  assertCurrentVersion("booking", booking.updatedAt, expectedUpdatedAt);
+  if (isArchived(booking)) throw new ArchivedRecordError("booking");
+  if (booking.bookingStatus === "Cancelled" && CANCELLED_LOCKED.some((field) => changes[field] !== undefined && changes[field] !== booking[field])) {
+    throw new BookingRuleError("A cancelled booking's money can't be changed. Reactivate it first.");
+  }
+
+  // A changed destination, package or route must come from its list; an
+  // unchanged one (same name, any case) stays as saved, even if archived since
+  const listChanges: Partial<Record<ListField, string>> = {};
+  for (const field of LIST_FIELD_IDS) {
+    const value = changes[field];
+    if (value === undefined) continue;
+    if (nameKeyOf(value) === nameKeyOf(booking[field])) delete changes[field];
+    else listChanges[field] = value;
+  }
+  Object.assign(changes, await fromLists(listChanges));
+
+  // A booking saved before Closed by existed must get one on its next edit
+  const closedBy = changes.closedById === undefined ? booking.closedBy : await closedByOf(changes.closedById, booking.closedBy);
+  if (!closedBy) throw new ValidationError({ closedById: "Choose who closed this booking." });
 
   // The invoice number and date never change. A changed trip start or end
   // must come after the invoice date; a new start moves the due date.
@@ -283,44 +352,106 @@ export async function updateBooking(id: string, input: unknown, expectedUpdatedA
     ...booking,
     ...data,
     ...calculateBookingAmounts(data),
+    closedBy,
     updatedAt: nextTimestamp(booking.updatedAt),
   };
   assertFitsBill(fitsBill, updated);
-  return writeIfUnchanged(updated, expectedUpdatedAt);
+  // A changed amount paid is money received (or given back) today
+  const payment = paymentEntry(id, updated.amountPaid - booking.amountPaid, todayIST(), "edit");
+  // A change of people, total or amount paid is a new row of its history; other edits aren't
+  const history = historyChanged(booking, updated) ? historyEntry(id, todayIST(), updated) : null;
+  return writeIfUnchanged(updated, expectedUpdatedAt, payment, history);
 }
 
 /**
- * Sets the booking status (Active / Cancelled / Archived). Archiving is a
- * soft delete; setting Active on an archived booking restores it.
+ * Sets the booking status. Archiving is a soft delete, and restoring returns a
+ * booking to what it was (a cancelled one stays cancelled, with its refund).
+ * Cancelling stores the refund (`refundAmount`, or the terms' amount if none is
+ * given); reactivating clears it, and is refused once the refund has gone back.
  */
-export async function setBookingStatus(id: string, status: BookingStatus, expectedUpdatedAt: string): Promise<BookingRef> {
+export async function setBookingStatus(id: string, status: BookingStatus, expectedUpdatedAt: string, refundAmount?: number): Promise<BookingRef> {
   await verifySession();
   assertBookingId(id);
-  if (!expectedUpdatedAt) {
-    // An unknown booking is 404 before a missing version is 428
-    if ((await findVersion(id)) === null) throw new BookingNotFoundError();
-    throw new MissingVersionError();
+  await assertVersionFor("booking", expectedUpdatedAt, () => findVersion(id));
+
+  if (status === "Archived") return writeStatus(id, status, expectedUpdatedAt);
+
+  const booking = await findBooking(id);
+  if (!booking) throw new NotFoundError("booking");
+  assertCurrentVersion("booking", booking.updatedAt, expectedUpdatedAt);
+  if (isArchived(booking)) {
+    if (status === "Cancelled") throw new ArchivedRecordError("booking");
+    return writeStatus(id, booking.cancelledOn ? "Cancelled" : "Active", expectedUpdatedAt);
+  }
+  if (booking.bookingStatus === status) return booking;
+
+  const today = todayIST();
+  if (status === "Cancelled") {
+    const refund = refundAmount ?? refundQuote(booking, today).amount;
+    assertRefundFits(refund, booking);
+    return writeBookingEvent({ ...booking, bookingStatus: status, cancelledOn: today, refundAmount: refund, refundedOn: null }, expectedUpdatedAt, today, "cancelled");
+  }
+  if (booking.refundedOn) throw new BookingRuleError("The refund is marked paid. Untick it first, then reactivate the booking.");
+  return writeBookingEvent({ ...booking, bookingStatus: status, cancelledOn: null, refundAmount: 0, refundedOn: null }, expectedUpdatedAt, today, "reactivated");
+}
+
+/** One atomic status change at the version on screen; nothing changed means someone else saved first or it's gone. */
+async function writeStatus(id: string, status: BookingStatus, expectedUpdatedAt: string): Promise<BookingRef> {
+  const saved = await setStatusIfVersion(id, expectedUpdatedAt, status, nextTimestamp(expectedUpdatedAt));
+  if (saved) return saved;
+  return notWritten("booking", () => findVersion(id));
+}
+
+function assertRefundFits(refund: number, booking: Pick<Booking, "amountPaid">): void {
+  if (refund > booking.amountPaid) throw new ValidationError({ refundAmount: `Refund cannot be more than the ₹${formatAmount(booking.amountPaid)} received.` });
+}
+
+/** Saves a cancellation or refund change with its history row, at the version on screen. */
+function writeBookingEvent(changed: Booking, expectedUpdatedAt: string, changedOn: string, event: HistoryEvent): Promise<Booking> {
+  const updated = { ...changed, updatedAt: nextTimestamp(expectedUpdatedAt) };
+  return writeIfUnchanged(updated, expectedUpdatedAt, null, historyEntry(updated.bookingId, changedOn, updated, event));
+}
+
+/** A cancelled booking's refund: change its amount (until it's paid), mark the day it went back, or undo that. */
+async function changeRefund(id: string, change: z.infer<typeof refundChangeSchema>, expectedUpdatedAt: string): Promise<BookingRef> {
+  await verifySession();
+  assertBookingId(id);
+  await assertVersionFor("booking", expectedUpdatedAt, () => findVersion(id));
+  const booking = await findBooking(id);
+  if (!booking) throw new NotFoundError("booking");
+  assertCurrentVersion("booking", booking.updatedAt, expectedUpdatedAt);
+  if (booking.bookingStatus !== "Cancelled") throw new BookingRuleError("Only a cancelled booking has a refund.");
+
+  const today = todayIST();
+  if ("refundAmount" in change) {
+    if (booking.refundedOn) throw new BookingRuleError("The refund is marked paid. Untick it to change the amount.");
+    if (change.refundAmount === booking.refundAmount) return booking;
+    assertRefundFits(change.refundAmount, booking);
+    return writeBookingEvent({ ...booking, refundAmount: change.refundAmount }, expectedUpdatedAt, today, "refund-changed");
   }
 
-  // One atomic call when everything is in order; the rules ride in the filter
-  const cannotFromArchived = status === "Cancelled";
-  const saved = await setStatusIfVersion(
-    id,
-    expectedUpdatedAt,
-    status,
-    nextTimestamp(expectedUpdatedAt),
-    cannotFromArchived ? { bookingStatus: { $ne: "Archived" } } : {}
-  );
-  if (saved) return saved;
-
-  // Nothing changed: say why
-  const version = await findVersion(id);
-  if (version === null) throw new BookingNotFoundError();
-  if (version !== expectedUpdatedAt) throw new StaleBookingError();
-  throw new BookingArchivedError();
+  const { refundedOn } = change;
+  if (refundedOn === booking.refundedOn) return booking;
+  if (refundedOn === null) return writeBookingEvent({ ...booking, refundedOn: null }, expectedUpdatedAt, today, "refund-undone");
+  if (booking.refundAmount <= 0) throw new BookingRuleError("There is no refund to mark as paid.");
+  if (compareDDMMYYYY(refundedOn, today) > 0) throw new ValidationError({ refundedOn: "The refund date can't be in the future." });
+  if (booking.cancelledOn && compareDDMMYYYY(refundedOn, booking.cancelledOn) < 0) throw new ValidationError({ refundedOn: "The refund date can't be before the booking was cancelled." });
+  return writeBookingEvent({ ...booking, refundedOn }, expectedUpdatedAt, refundedOn, "refund-paid");
 }
 
 /** Soft-deletes a booking. It stays in the database and can be restored. */
 export function archiveBooking(id: string, expectedUpdatedAt: string): Promise<BookingRef> {
   return setBookingStatus(id, "Archived", expectedUpdatedAt);
+}
+
+/** A PATCH: { bookingStatus } cancels, reactivates or restores; { refundAmount } or { refundedOn } is the refund; anything else is an edit. */
+export function changeBooking(id: string, input: unknown, expectedUpdatedAt: string): Promise<BookingRef> {
+  return statusOrEdit(input, statusChangeSchema, {
+    status: (change) => setBookingStatus(id, change.bookingStatus, expectedUpdatedAt, "refundAmount" in change ? change.refundAmount : undefined),
+    edit: (other) =>
+      statusOrEdit(other, refundChangeSchema, {
+        status: (refund) => changeRefund(id, refund, expectedUpdatedAt),
+        edit: (changes) => updateBooking(id, changes, expectedUpdatedAt),
+      }),
+  });
 }

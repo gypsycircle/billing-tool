@@ -53,6 +53,12 @@ describe("login rate limiter (memory store)", () => {
     expect((await registerLoginAttempt("9.9.9.9")).allowed).toBe(true);
   });
 
+  it("one client over its limit doesn't use up the global allowance", async () => {
+    for (let i = 0; i < 50; i++) await fail("1.1.1.1");
+    expect((await registerLoginAttempt("1.1.1.1")).allowed).toBe(false);
+    expect((await registerLoginAttempt("2.2.2.2")).allowed).toBe(true);
+  });
+
   it("blocks everyone after 40 failures across clients, even after a success", async () => {
     for (let i = 0; i < 40; i++) await fail(`10.0.0.${i}`);
     await registerLoginAttempt("10.0.0.1");

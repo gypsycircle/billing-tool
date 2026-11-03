@@ -1,105 +1,47 @@
 // components/bookings/booking-row-menu.tsx
-// The "⋯" menu on each ledger row.
+// The "⋯" menu on each ledger row: the shared record menu, plus the bill
+// download and cancel / reactivate.
 
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Archive, ArchiveRestore, Ban, Download, Eye, MoreHorizontal, Pencil, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Download } from "lucide-react";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { RecordRowMenu } from "@/components/shared/record-menus";
+import { isArchived } from "@/lib/domain/records";
+import { routes } from "@/lib/domain/routes";
 import type { BookingActionTarget } from "@/lib/domain/types";
 import { useBillPdf } from "@/hooks/use-bill-pdf";
 import { useBookingActions } from "@/hooks/use-booking-actions";
-import { ArchiveDialog } from "./archive-dialog";
+import { BookingStatusItems, bookingArchiveCopy } from "./booking-status";
+import { CancelBookingDialog } from "./cancel-booking-dialog";
 
 export function BookingRowMenu({ booking }: { booking: BookingActionTarget }) {
-  const router = useRouter();
-  const actions = useBookingActions(booking);
+  const actions = useBookingActions(booking, { inList: true });
   const bill = useBillPdf(booking);
-  const [archiveOpen, setArchiveOpen] = useState(false);
-  const href = `/bookings/${booking.bookingId}`;
-  const status = booking.bookingStatus;
+  const archived = isArchived(booking);
+  const [cancelling, setCancelling] = useState(false);
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Actions for booking No. ${booking.invoiceNumber}`}
-              className="text-muted-foreground hover:text-foreground"
-              disabled={actions.pending}
-            />
-          }
-        >
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => router.push(href)}>
-              <Eye />
-              Open
+      <RecordRowMenu
+        label={`booking No. ${booking.invoiceNumber}`}
+        href={routes.bookings.page(booking.bookingId)}
+        editHref={routes.bookings.edit(booking.bookingId)}
+        archived={archived}
+        actions={actions}
+        copy={bookingArchiveCopy(booking)}
+        openItems={
+          !archived && (
+            <DropdownMenuItem disabled={bill.pending} onClick={() => void bill.download()}>
+              <Download />
+              Download bill
             </DropdownMenuItem>
-            {status !== "Archived" && (
-              <DropdownMenuItem onClick={() => router.push(`${href}/edit`)}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-            )}
-            {status !== "Archived" && (
-              <DropdownMenuItem disabled={bill.pending} onClick={() => void bill.download()}>
-                <Download />
-                Download bill
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            {status === "Active" && (
-              <DropdownMenuItem onClick={() => void actions.cancel()}>
-                <Ban />
-                Mark cancelled
-              </DropdownMenuItem>
-            )}
-            {status === "Cancelled" && (
-              <DropdownMenuItem onClick={() => void actions.reactivate()}>
-                <RotateCcw />
-                Reactivate
-              </DropdownMenuItem>
-            )}
-            {status === "Archived" ? (
-              <DropdownMenuItem onClick={() => void actions.restore()}>
-                <ArchiveRestore />
-                Restore
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem variant="destructive" onClick={() => setArchiveOpen(true)}>
-                <Archive />
-                Archive…
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <ArchiveDialog
-        open={archiveOpen}
-        onOpenChange={setArchiveOpen}
-        invoiceNumber={booking.invoiceNumber}
-        customerName={booking.customerName}
-        pending={actions.pending}
-        onConfirm={() => actions.archive()}
+          )
+        }
+        statusItems={<BookingStatusItems booking={booking} actions={actions} onCancel={() => setCancelling(true)} />}
       />
+      <CancelBookingDialog booking={booking} open={cancelling} onOpenChange={setCancelling} />
     </>
   );
 }

@@ -1,7 +1,7 @@
 // components/layout/command-menu.tsx
 // Command palette and keyboard shortcuts:
 //   ⌘K / Ctrl+K or "/"  open the palette
-//   N                   new booking
+//   B / E               new booking / new expense (SHORTCUTS)
 // Bookings are searched in the ledger's own search box, not here.
 
 "use client";
@@ -9,7 +9,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { BookOpen, Download, LogOut, Plus, Search } from "lucide-react";
+import { BookOpen, Download, LogOut, Plus, ReceiptText, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -24,9 +24,12 @@ import {
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
 import { THEME_OPTIONS } from "@/components/layout/theme-toggle";
+import { routes } from "@/lib/domain/routes";
+import { SHORTCUTS } from "@/lib/domain/shortcuts";
 import { useHotkey } from "@/hooks/use-hotkey";
 import { useInstallPrompt } from "@/hooks/use-install-prompt";
 import { useLogout } from "@/hooks/use-logout";
+import { useShortcut } from "@/hooks/use-shortcut";
 
 export function CommandMenu() {
   const router = useRouter();
@@ -37,7 +40,8 @@ export function CommandMenu() {
   const [search, setSearch] = useState("");
   useHotkey("k", () => setOpen((o) => !o), { mod: true });
   useHotkey("/", () => setOpen(true));
-  useHotkey("n", () => router.push("/bookings/new"), { enabled: !open });
+  useShortcut(SHORTCUTS.newBooking, () => router.push(routes.bookings.new));
+  useShortcut(SHORTCUTS.newExpense, () => router.push(routes.expenses.new));
 
   /** Closes the palette, then runs the action. */
   const run = useCallback((action: () => void) => {
@@ -50,13 +54,13 @@ export function CommandMenu() {
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 w-9 justify-center gap-2 bg-card px-0 text-muted-foreground shadow-none hover:text-foreground sm:w-56 sm:justify-start sm:px-2.5"
+        className="h-8 w-9 justify-center gap-2 bg-card px-0 text-muted-foreground shadow-none hover:text-foreground lg:w-56 lg:justify-start lg:px-2.5"
         aria-label="Open command menu"
       >
         <Search />
-        <span className="hidden flex-1 text-left font-normal sm:inline">Jump to…</span>
-        {/* "/" works on every platform; ⌘K / Ctrl+K also open the menu */}
-        <Kbd className="hidden sm:inline-flex">/</Kbd>
+        {/* An icon until there's room beside the nav; "/" and ⌘K / Ctrl+K open it at any size */}
+        <span className="hidden flex-1 text-left font-normal lg:inline">Jump to…</span>
+        <Kbd className="hidden lg:inline-flex">/</Kbd>
       </Button>
 
       <CommandDialog
@@ -73,14 +77,27 @@ export function CommandMenu() {
           <CommandList className="max-h-[min(26rem,60vh)]">
             <CommandEmpty>Nothing matches that.</CommandEmpty>
             <CommandGroup heading="Go to">
-              <CommandItem onSelect={() => run(() => router.push("/bookings"))}>
+              <CommandItem onSelect={() => run(() => router.push(routes.bookings.list))}>
                 <BookOpen />
                 Bookings
               </CommandItem>
-              <CommandItem onSelect={() => run(() => router.push("/bookings/new"))}>
+              <CommandItem onSelect={() => run(() => router.push(routes.bookings.new))}>
                 <Plus />
                 New booking
-                <CommandShortcut>N</CommandShortcut>
+                <CommandShortcut>{SHORTCUTS.newBooking.toUpperCase()}</CommandShortcut>
+              </CommandItem>
+              <CommandItem onSelect={() => run(() => router.push(routes.expenses.list))}>
+                <ReceiptText />
+                Expenses
+              </CommandItem>
+              <CommandItem onSelect={() => run(() => router.push(routes.expenses.new))}>
+                <Plus />
+                New expense
+                <CommandShortcut>{SHORTCUTS.newExpense.toUpperCase()}</CommandShortcut>
+              </CommandItem>
+              <CommandItem onSelect={() => run(() => router.push(routes.settings.page))}>
+                <Settings />
+                Settings: team and lists
               </CommandItem>
             </CommandGroup>
             <CommandSeparator />

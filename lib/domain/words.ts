@@ -55,3 +55,8 @@ export function amountToWords(amount: number): string {
 
   return `${parts.join(" ")} ${n === 1 ? "Rupee" : "Rupees"}`;
 }
+
+/** "1 booking", "3 bookings". */
+export function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}

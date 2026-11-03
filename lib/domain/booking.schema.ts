@@ -7,42 +7,14 @@
 import { z } from "zod";
 import type { BookingDraft, BookingInput } from "./types";
 import { addDays, compareDDMMYYYY, isValidDDMMYYYY } from "./dates";
+import { crossFieldRule, ddmmyyyy, numberError, optionalText, phoneNumber, recordIdSchema, rupees, text } from "./field-rules";
+import { flag } from "./filters";
 
 // ---------------------------------------------------------------------------
-// Field rules
+// Field rules (shared ones in field-rules.ts)
 // ---------------------------------------------------------------------------
 
-export const bookingIdSchema = z.uuid("Invalid booking ID.");
-
-const ddmmyyyy = (label: string) =>
-  z
-    .string()
-    .trim()
-    .refine(isValidDDMMYYYY, `${label} must be a valid date (DD/MM/YYYY).`);
-
-/**
- * Text that starts with = + - or @ is run as a formula by Excel or Google
- * Sheets if bookings are ever exported to CSV/a spreadsheet (CSV injection).
- * Such values are refused here, so they are never stored.
- */
-const FORMULA_START = /^[=+\-@]/;
-const notFormula = (label: string) =>
-  [(value: string) => !FORMULA_START.test(value), `${label} can't start with =, +, - or @.`] as const;
-
-const text = (label: string, max: number) =>
-  z
-    .string()
-    .trim()
-    .min(1, `${label} is required.`)
-    .max(max, `${label} must be at most ${max} characters.`)
-    .refine(...notFormula(label));
-
-const optionalText = (label: string, max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max, `${label} must be at most ${max} characters.`)
-    .refine(...notFormula(label));
+export const bookingIdSchema = recordIdSchema("booking");
 
 /** Optional customer email: "" or a valid address, stored lowercased. */
 const optionalEmail = z
@@ -51,13 +23,6 @@ const optionalEmail = z
   .max(254, "Email must be at most 254 characters.")
   .transform((value) => value.toLowerCase())
   .refine((value) => value === "" || z.email().safeParse(value).success, "Enter a valid email address.");
-
-const rupees = (label: string) =>
-  z
-    .number({ error: `${label} must be a number.` })
-    .int(`${label} must be in whole rupees.`)
-    .nonnegative(`${label} cannot be negative.`)
-    .max(1_00_00_00_000, `${label} is too large.`);
 
 // ---------------------------------------------------------------------------
 // Booking input
@@ -73,13 +38,7 @@ const bookingInputSchema = z.object({
   invoiceDate: ddmmyyyy("Invoice date"),
   dueDate: ddmmyyyy("Due date"),
   customerName: text("Customer name", 100),
-  customerPhone: z
-    .string()
-    .trim()
-    .min(1, "Mobile number is required.")
-    .min(7, "Mobile number is too short.")
-    .max(15, "Mobile number is too long.")
-    .regex(/^[+\d\s\-()]+$/, "Mobile number may only contain digits, spaces, +, - and brackets."),
+  customerPhone: phoneNumber("Mobile number"),
   customerEmail: optionalEmail,
   packageName: text("Package name", 150),
   destination: text("Destination", 100),
@@ -88,65 +47,47 @@ const bookingInputSchema = z.object({
   tripEndDate: ddmmyyyy("Trip end date"),
   routeDescription: optionalText("Route description", 200),
   travellers: z
-    .number({ error: "Travellers must be a number." })
+    .number({ error: numberError("Travellers") })
     .int("Travellers must be a whole number.")
     .min(1, "Travellers must be at least 1.")
     .max(10_000, "Travellers is too large."),
   ratePerPerson: rupees("Rate per person"),
   discountAmount: rupees("Discount"),
   amountPaid: rupees("Amount paid"),
+  slotAmount: rupees("Slot amount"),
   invoiceNote: optionalText("Invoice note", 300),
   internalNotes: optionalText("Internal notes", 500),
 }) satisfies z.ZodType<BookingInput>;
 
-// Zod still runs refinements when a field already failed, so only compare valid dates.
-const isBefore = (a: string, b: string) =>
-  isValidDDMMYYYY(a) && isValidDDMMYYYY(b) && compareDDMMYYYY(a, b) < 0;
+// Each rule runs once the fields it reads are valid (crossFieldRule), so it
+// shows together with any other field's error.
+const isBefore = (a: string, b: string) => isValidDDMMYYYY(a) && isValidDDMMYYYY(b) && compareDDMMYYYY(a, b) < 0;
 
-/** Rules that span more than one of the fields the user enters. */
-function checkDraftRules(data: BookingDraft, ctx: z.RefinementCtx): void {
-  const amountsValid =
-    [data.travellers, data.ratePerPerson, data.discountAmount, data.amountPaid].every(
-      (n) => Number.isSafeInteger(n) && n >= 0
-    ) && data.travellers >= 1;
+/** The discount fits the gross amount; the amount paid and the slot amount fit the total. */
+const amountsRule = crossFieldRule<BookingDraft>(["travellers", "ratePerPerson", "discountAmount", "amountPaid", "slotAmount"], (data, ctx) => {
   const gross = data.travellers * data.ratePerPerson;
-
-  if (!amountsValid) {
-    // Field-level errors already explain the problem.
-  } else if (data.discountAmount > gross) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["discountAmount"],
-      message: "Discount cannot exceed the gross amount.",
-    });
+  if (data.discountAmount > gross) {
+    ctx.addIssue({ code: "custom", path: ["discountAmount"], message: "Discount cannot exceed the gross amount." });
   } else if (data.amountPaid > gross - data.discountAmount) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["amountPaid"],
-      message: "Amount paid cannot exceed the total amount.",
-    });
+    ctx.addIssue({ code: "custom", path: ["amountPaid"], message: "Amount paid cannot exceed the total amount." });
+  } else if (data.slotAmount > gross - data.discountAmount) {
+    ctx.addIssue({ code: "custom", path: ["slotAmount"], message: "Slot amount cannot exceed the total amount." });
   }
+});
 
+/** The trip ends on or after its start. */
+const tripOrderRule = crossFieldRule<BookingDraft>(["tripStartDate", "tripEndDate"], (data, ctx) => {
   if (isBefore(data.tripEndDate, data.tripStartDate)) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["tripEndDate"],
-      message: "Trip end date cannot be before the start date.",
-    });
+    ctx.addIssue({ code: "custom", path: ["tripEndDate"], message: "Trip end date cannot be before the start date." });
   }
-}
+});
 
-/** Every rule for a complete booking, including the assigned dates. */
-function checkCrossFieldRules(data: BookingInput, ctx: z.RefinementCtx): void {
-  checkDraftRules(data, ctx);
+/** The due date isn't before the invoice date (the dates the server assigns). */
+const dueDateRule = crossFieldRule<BookingInput>(["dueDate", "invoiceDate"], (data, ctx) => {
   if (isBefore(data.dueDate, data.invoiceDate)) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["dueDate"],
-      message: "Due date cannot be before the invoice date.",
-    });
+    ctx.addIssue({ code: "custom", path: ["dueDate"], message: "Due date cannot be before the invoice date." });
   }
-}
+});
 
 /**
  * A trip must start after its invoice date (from the next day on). Checked
@@ -169,44 +110,56 @@ function afterInvoiceIssue(date: string, invoiceDate: string, word: "start" | "e
 }
 
 /** A complete booking (the stored record): every field, plus cross-field rules. */
-export const createBookingSchema = bookingInputSchema.superRefine(checkCrossFieldRules);
-
-const bookingDraftObject = bookingInputSchema.omit({ invoiceNumber: true, invoiceDate: true, dueDate: true });
+export const createBookingSchema = bookingInputSchema
+  .superRefine(...amountsRule)
+  .superRefine(...tripOrderRule)
+  .superRefine(...dueDateRule);
 
 /**
- * Create: what the user enters. The server assigns the invoice number and
- * dates (any sent are dropped) and validates the full record afterwards.
+ * A new booking is dated today or yesterday. Returns the message, or null when
+ * the date is fine (or not a valid date yet).
  */
-export const bookingDraftSchema = bookingDraftObject.superRefine(checkDraftRules);
+export function invoiceDateIssue(invoiceDate: string, today: string): string | null {
+  if (!isValidDDMMYYYY(invoiceDate) || invoiceDate === today || invoiceDate === addDays(today, -1)) return null;
+  return "Invoice date must be today or yesterday.";
+}
+
+const bookingEditableObject = bookingInputSchema
+  .omit({ invoiceNumber: true, invoiceDate: true, dueDate: true })
+  .extend({ closedById: z.uuid("Choose who closed this booking.") });
+
+/**
+ * Create: what the user enters, including the invoice date. The server assigns
+ * the invoice number and due date (any sent are dropped), and validates the
+ * full record afterwards.
+ */
+export const bookingDraftSchema = bookingEditableObject
+  .extend({ invoiceDate: ddmmyyyy("Invoice date") })
+  .superRefine(...amountsRule)
+  .superRefine(...tripOrderRule);
+
+type BookingFormDates = Pick<BookingInput, "invoiceDate" | "tripStartDate" | "tripEndDate">;
 
 /**
  * The booking form: the draft plus "trip starts and ends after the invoice
- * date". `saved` (edit) skips a rule while that stored date is unchanged.
- * Runs even while other fields are still empty (`when`), so the message shows
- * as soon as a trip date is entered.
+ * date". `saved` (edit) skips a rule while that stored date is unchanged;
+ * `today` (create) adds the rule on the invoice date.
  */
-export function bookingFormSchema(
-  invoiceDate: string,
-  saved: { tripStartDate?: string; tripEndDate?: string } = {}
-) {
-  return bookingDraftSchema.superRefine(
-    (data, ctx) => {
-      if (data.tripStartDate !== saved.tripStartDate) {
-        const message = tripStartIssue(data.tripStartDate, invoiceDate);
-        if (message) ctx.addIssue({ code: "custom", path: ["tripStartDate"], message });
-      }
-      if (data.tripEndDate !== saved.tripEndDate) {
-        const message = tripEndIssue(data.tripEndDate, invoiceDate);
-        if (message) ctx.addIssue({ code: "custom", path: ["tripEndDate"], message });
-      }
-    },
-    {
-      when: ({ value }) => {
-        const v = value as { tripStartDate?: unknown; tripEndDate?: unknown } | null;
-        return typeof v?.tripStartDate === "string" && typeof v?.tripEndDate === "string";
-      },
-    }
-  );
+export function bookingFormSchema({ saved = {}, today }: { saved?: { tripStartDate?: string; tripEndDate?: string }; today?: string } = {}) {
+  const afterInvoice = (field: "tripStartDate" | "tripEndDate", issue: typeof tripStartIssue) =>
+    crossFieldRule<BookingFormDates>([field, "invoiceDate"], (data, ctx) => {
+      if (data[field] === saved[field]) return;
+      const message = issue(data[field], data.invoiceDate);
+      if (message) ctx.addIssue({ code: "custom", path: [field], message });
+    });
+  const invoiceDateRule = crossFieldRule<BookingFormDates>(["invoiceDate"], (data, ctx) => {
+    const message = today ? invoiceDateIssue(data.invoiceDate, today) : null;
+    if (message) ctx.addIssue({ code: "custom", path: ["invoiceDate"], message });
+  });
+  return bookingDraftSchema
+    .superRefine(...invoiceDateRule)
+    .superRefine(...afterInvoice("tripStartDate", tripStartIssue))
+    .superRefine(...afterInvoice("tripEndDate", tripEndIssue));
 }
 
 /**
@@ -214,12 +167,22 @@ export function bookingFormSchema(
  * the invoice number and dates) rejected. The service merges the update onto
  * the stored booking and re-validates with createBookingSchema.
  */
-export const updateBookingSchema = bookingDraftObject
+export const updateBookingSchema = bookingEditableObject
   .partial()
   .strict()
   .refine((data) => Object.keys(data).length > 0, "No changes were provided.");
 
+/** GET /api/bookings/[id]/pdf's query: ?inline=1 opens the bill in the browser instead of downloading it. */
+export const parseBillQuery = (query: Record<string, string | string[] | undefined>) => ({ inline: flag.parse(query.inline) });
+
 /** A status-only change: cancel, reactivate or restore (archiving uses DELETE). */
-export const statusChangeSchema = z
-  .object({ bookingStatus: z.enum(["Active", "Cancelled"]) })
-  .strict();
+export const statusChangeSchema = z.union([
+  z.object({ bookingStatus: z.literal("Active") }).strict(),
+  z.object({ bookingStatus: z.literal("Cancelled"), refundAmount: rupees("Refund amount").optional() }).strict(),
+]);
+
+/** A cancelled booking's refund: its amount, or the day it went back (null: not yet). */
+export const refundChangeSchema = z.union([
+  z.object({ refundAmount: rupees("Refund amount") }).strict(),
+  z.object({ refundedOn: ddmmyyyy("Refund date").nullable() }).strict(),
+]);

@@ -20,3 +20,18 @@ export function formatAmount(amount: number): string {
   const grouped = formatIndianGrouping(Math.abs(Math.round(amount)).toString());
   return amount < 0 ? `-${grouped}` : grouped;
 }
+
+const COMPACT_UNITS = [
+  { size: 1_00_00_000, suffix: "Cr" },
+  { size: 1_00_000, suffix: "L" },
+  { size: 1_000, suffix: "K" },
+] as const;
+
+/** Short rupees for chart axes, the Indian way: 950, 1.5K, 2.5L, 1.2Cr (no symbol). */
+export function formatCompactAmount(amount: number): string {
+  const size = Math.abs(amount);
+  const unit = COMPACT_UNITS.find((u) => size >= u.size);
+  if (!unit) return formatAmount(amount);
+  const value = Math.round((size / unit.size) * 10) / 10;
+  return `${amount < 0 ? "-" : ""}${value}${unit.suffix}`;
+}
