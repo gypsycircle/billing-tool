@@ -26,7 +26,7 @@ export const ddmmyyyy = (label: string) =>
   z
     .string()
     .trim()
-    .refine(isValidDDMMYYYY, `${label} must be a valid date (DD/MM/YYYY).`);
+    .refine(isValidDDMMYYYY, { error: ({ input }) => (input ? `${label} must be a valid date (DD/MM/YYYY).` : `${label} is required.`) });
 
 /**
  * Text that starts with = + - or @ is run as a formula by Excel or Google
@@ -40,7 +40,7 @@ const notFormula = (label: string) =>
 /** Required text, trimmed, up to `max` characters. */
 export const text = (label: string, max: number) =>
   z
-    .string()
+    .string({ error: `${label} is required.` })
     .trim()
     .min(1, `${label} is required.`)
     .max(max, `${label} must be at most ${max} characters.`)

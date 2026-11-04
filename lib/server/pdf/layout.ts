@@ -12,9 +12,10 @@
 import "server-only";
 
 import type { Font } from "@pdf-lib/fontkit";
+import { NO_NOTE } from "@/lib/domain/bill-text";
 import type { BookingInput } from "@/lib/domain/types";
 import type { ImageKey } from "./assets";
-import { BANK_DETAILS, COMPANY, TERMS, UPI_ID } from "./company";
+import { BANK_DETAILS, COMPANY, UPI_ID } from "./company";
 import type { BillContent } from "./content";
 import {
   BOTTOM_LIMIT,
@@ -312,6 +313,31 @@ function header(page: BillPage, top: number): number {
   return Math.max(top + LOGO.height, contactBaseline + 4);
 }
 
+type Seal = NonNullable<BillContent["cancelled"]>["seal"];
+
+const sealHeight = ({ lines }: Seal) => 22 + lines.length * 9.5;
+
+/** A cancelled bill's seal: a double-lined stamp at the left, under the notes. */
+function cancelledSeal(page: BillPage, top: number, seal: Seal): void {
+  const { title, lines } = seal;
+  const titleSize = 11;
+  const lineSize = TYPE.tiny;
+  const tracking = titleSize * 0.12;
+  const widest = Math.max(page.width(title, "sansSemibold", titleSize, tracking), ...lines.map((line) => page.width(line, "sansMedium", lineSize)));
+  const width = widest + 20;
+  const height = sealHeight(seal);
+  const x = INNER_LEFT;
+  const y = top;
+  page.shapes.push({ kind: "path", path: roundedRect(x, y, width, height, 3, { top: true, bottom: true }), stroke: COLORS.seal, strokeWidth: 1 });
+  page.shapes.push({ kind: "path", path: roundedRect(x + 2, y + 2, width - 4, height - 4, 2, { top: true, bottom: true }), stroke: COLORS.seal, strokeWidth: 0.4 });
+  const center = x + width / 2;
+  const titleWidth = page.width(title, "sansSemibold", titleSize, tracking);
+  page.text(title, center - titleWidth / 2, y + 15, "sansSemibold", titleSize, COLORS.seal, "left", tracking);
+  lines.forEach((line, i) => {
+    page.text(line, center - page.width(line, "sansMedium", lineSize) / 2, y + 15 + 10 + i * 9.5, "sansMedium", lineSize, COLORS.seal);
+  });
+}
+
 /** Grey band: Invoice No. · Invoice date · Due date · Destination. Returns the bottom. */
 function invoiceBand(page: BillPage, c: BillContent, top: number): number {
   const columnWidth = INNER_WIDTH / 4;
@@ -394,7 +420,10 @@ function servicesTable(page: BillPage, c: BillContent, top: number): number {
   const packageLast = page.field(c.packageName, textLeft(COLUMNS.services), b, field({
     font: "sansMedium", size: TYPE.body, minSize: 8, maxLines: 3, maxWidth: textWidthOf(COLUMNS.services), source: "packageName", label: "Package name",
   }));
-  const descriptionLast = page.field(c.serviceDescription, textLeft(COLUMNS.services), packageLast + 12.5, field({
+  // The package type, when the booking has one, under the name
+  const typeLast = c.packageType ? packageLast + 11 : packageLast;
+  if (c.packageType) page.text(c.packageType, textLeft(COLUMNS.services), typeLast, "sans", TYPE.small, COLORS.muted);
+  const descriptionLast = page.field(c.serviceDescription, textLeft(COLUMNS.services), typeLast + 12.5, field({
     font: "sans", size: TYPE.small, minSize: 7, maxLines: 5, leading: 1.35, color: COLORS.muted, maxWidth: textWidthOf(COLUMNS.services),
     source: "routeDescription", label: "Route",
   }));
@@ -431,33 +460,53 @@ const TOTALS_WIDTH = 190;
 function notesAndTotals(page: BillPage, c: BillContent, top: number): number {
   const left = INNER_RIGHT - TOTALS_WIDTH;
 
-  // Totals: three figures at one size; Total and Balance stand out by weight
+  // Totals: figures at one size and one spacing; Total and the last stand out by
+  // weight. A cancelled bill has one more row (the save's fit check allows for it)
+  const cancelled = c.cancelled;
+  const step = 16;
   const total = top + 12;
   page.text("Total Amount", left, total, "sansSemibold", TYPE.body, COLORS.ink);
   page.money(c.totalAmount, INNER_RIGHT, total, "sansSemibold", TYPE.body, TOTALS_WIDTH - 90, "ratePerPerson", "The total");
-  const received = total + 16;
+  const received = total + step;
   page.text("Received Amount", left, received, "sans", TYPE.body, COLORS.muted);
   page.money(c.receivedAmount, INNER_RIGHT, received, "sans", TYPE.body, TOTALS_WIDTH - 90, "amountPaid", "Amount paid");
-  const balance = received + 16;
-  page.text("Balance", left, balance, "sansSemibold", TYPE.body, COLORS.ink);
-  page.money(c.balance, INNER_RIGHT, balance, "sansSemibold", TYPE.body, TOTALS_WIDTH - 90, "amountPaid", "The balance");
-  const wordsLabel = balance + 19;
-  page.eyebrow("Total amount (in words)", INNER_RIGHT, wordsLabel, "right");
+  let lastFigure = received + step;
+  if (cancelled) {
+    page.text(cancelled.chargeLabel, left, lastFigure, "sans", TYPE.body, COLORS.muted);
+    page.money(cancelled.charge, INNER_RIGHT, lastFigure, "sans", TYPE.body, TOTALS_WIDTH - 90, "amountPaid", "The cancellation charge");
+    lastFigure += step;
+    page.text(cancelled.refundLabel, left, lastFigure, "sansSemibold", TYPE.body, COLORS.ink);
+    page.money(cancelled.refund, INNER_RIGHT, lastFigure, "sansSemibold", TYPE.body, TOTALS_WIDTH - 90, "amountPaid", "The refund");
+  } else {
+    page.text("Balance", left, lastFigure, "sansSemibold", TYPE.body, COLORS.ink);
+    page.money(c.balance, INNER_RIGHT, lastFigure, "sansSemibold", TYPE.body, TOTALS_WIDTH - 90, "amountPaid", "The balance");
+  }
+  const wordsLabel = lastFigure + 19;
+  page.eyebrow(c.wordsLabel, INNER_RIGHT, wordsLabel, "right");
   const wordsLast = page.field(c.amountInWords, INNER_RIGHT, wordsLabel + 15, field({
     font: "serifItalic", size: TYPE.words, minSize: 9, maxLines: 3, align: "right", maxWidth: TOTALS_WIDTH,
     source: "ratePerPerson", label: "The total in words", problem: tooLarge("The total"),
   }));
 
-  // Notes: left out entirely when there is no note
-  let notesLast = top;
-  if (c.note.length > 0) {
-    const width = left - 28 - INNER_LEFT;
-    page.eyebrow("Notes", INNER_LEFT, top + 6);
-    notesLast = note(page, c.note, top + 22, width);
-  }
+  // Notes: says so when there is none, like the booking page
+  page.eyebrow("Notes", INNER_LEFT, top + 6);
+  let notesLast = top + 22;
+  if (c.note.length > 0) notesLast = note(page, c.note, notesLast, left - 28 - INNER_LEFT);
+  else page.text(NO_NOTE, INNER_LEFT, notesLast, "serifItalic", TYPE.body, COLORS.muted);
 
-  return Math.max(wordsLast + 4, notesLast) + 10;
+  const figuresBottom = wordsLast + 4;
+  if (!cancelled) return Math.max(figuresBottom, notesLast) + 10;
+
+  // The seal: at the bottom left, its edge level with the bottom of the words' letters, or below a
+  // long note. A little less space under it: its extra row's height, won back where it doesn't show
+  const wordsTextBottom = wordsLast + TYPE.words * WORDS_DESCENT;
+  const sealTop = Math.max(wordsTextBottom - sealHeight(cancelled.seal), notesLast + 14);
+  cancelledSeal(page, sealTop, cancelled.seal);
+  return Math.max(figuresBottom, sealTop + sealHeight(cancelled.seal)) + 7;
 }
+
+/** How far the words' letters hang below their baseline, as a share of their size. */
+const WORDS_DESCENT = 0.22;
 
 const NOTE_MAX_LINES = 9;
 
@@ -520,7 +569,7 @@ function payment(page: BillPage, top: number): number {
 }
 
 /** Terms and conditions across the full width, numbered, with a little space between points. Returns the bottom. */
-function terms(page: BillPage, top: number): number {
+function terms(page: BillPage, top: number, list: BillContent["terms"]): number {
   const headingBaseline = top + 6;
   page.eyebrow("Terms and conditions", INNER_LEFT, headingBaseline);
   // The points at the bank details' size
@@ -531,7 +580,7 @@ function terms(page: BillPage, top: number): number {
   const width = INNER_RIGHT - textX;
   let baseline = firstLineUnder(headingBaseline, size);
 
-  TERMS.forEach((term, i) => {
+  list.forEach((term, i) => {
     if (i > 0) baseline += lineHeight + 3;
     page.text(`${i + 1}.`, numberX, baseline, "sansSemibold", size, COLORS.ink);
     const lines = page.rich([{ text: `${term.lead} `, font: "sansSemibold" }, { text: term.text, font: "sans" }], size, width);
@@ -587,7 +636,7 @@ export function layoutBill(content: BillContent, faces: Faces): BillLayout {
   divider(totalsBottom);
   const paymentBottom = payment(page, totalsBottom + 12);
   divider(paymentBottom + 10);
-  const termsBottom = terms(page, paymentBottom + 18);
+  const termsBottom = terms(page, paymentBottom + 18, content.terms);
 
   page.shapes.push({ kind: "path", path: roundedRect(LEFT, cardTop, RIGHT - LEFT, cardBottom - cardTop, CARD.radius, { top: true, bottom: true }), stroke: COLORS.hairline, strokeWidth: RULES.hairline });
 

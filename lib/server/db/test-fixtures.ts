@@ -22,7 +22,7 @@ export function booking(overrides: Partial<Booking>): Booking {
     batchName: "19th Jan Delhi",
     tripStartDate: "03/02/2026",
     tripEndDate: "08/02/2026",
-    routeDescription: "",
+    routeDescription: "Agra-Delhi",
     travellers: 2,
     ratePerPerson: 1_000,
     grossAmount: 2_000,
@@ -36,9 +36,11 @@ export function booking(overrides: Partial<Booking>): Booking {
     invoiceNote: "",
     internalNotes: "",
     slotAmount: 0,
+    packageType: "Group",
     cancelledOn: null,
     refundAmount: 0,
     refundedOn: null,
+    refundedAt: null,
     closedBy: { refId: LIST_IDS.member, label: "Ravi Kumar" },
     ...overrides,
   };
@@ -60,6 +62,7 @@ export function bookingDraft() {
     customerPhone: "9633569936",
     customerEmail: "Adarsh@Example.com",
     packageName: "Delhi - Agra Package",
+    packageType: "Group" as const,
     destination: "Delhi",
     batchName: "Batch A",
     tripStartDate: addDays(today, 30),
@@ -81,6 +84,7 @@ export const LIST_IDS = {
   package: "33333333-3333-4333-8333-333333333333",
   route: "44444444-4444-4444-8444-444444444444",
   marketing: "55555555-5555-4555-8555-555555555555",
+  role: "99999999-9999-4999-8999-999999999999",
 } as const;
 
 /**
@@ -92,12 +96,13 @@ export async function seedLists(): Promise<void> {
   const { generalCollection, usersCollection } = await import("./collections");
   const now = new Date();
   const named = (id: string, name: string) => ({ _id: id, name, nameKey: name.toLowerCase(), status: "Active" as const, createdAt: now, updatedAt: now });
-  await (await usersCollection()).insertOne({ ...named(LIST_IDS.member, "Ravi Kumar"), role: "Guide", phone: "" });
+  await (await usersCollection()).insertOne({ ...named(LIST_IDS.member, "Ravi Kumar"), role: "Sales", phone: "" });
   await (await generalCollection()).insertMany([
     { ...named(LIST_IDS.destination, "Delhi"), kind: "destination" },
     { ...named(LIST_IDS.package, "Delhi - Agra Package"), kind: "package" },
     { ...named(LIST_IDS.route, "Agra-Delhi"), kind: "route" },
     { ...named(LIST_IDS.marketing, "Meta Ads"), kind: "marketing" },
+    { ...named(LIST_IDS.role, "Sales"), kind: "role" },
   ]);
 }
 

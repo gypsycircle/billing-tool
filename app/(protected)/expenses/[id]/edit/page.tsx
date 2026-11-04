@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { ExpenseForm } from "@/components/expenses/expense-form/expense-form";
 import { expenseFormDefaults } from "@/components/expenses/expense-form/defaults";
 import { EditRecordHeader } from "@/components/shared/record-headers";
+import { PageGroup } from "@/components/shared/page-body";
 import { StatusNotice } from "@/components/shared/status-notice";
 import { todayIST } from "@/lib/domain/dates";
 import { expenseTypeLabel } from "@/lib/domain/expenses";
@@ -29,16 +30,18 @@ export default async function EditExpensePage({ params }: PageProps<"/expenses/[
         title={expenseTypeLabel(expense.expenseType)}
         description="Change what you need — a new type brings its kind with it."
       />
-      {!expense.paidFor && <StatusNotice>This expense was saved before expenses said where the money went. Fill in Paid for to save your changes.</StatusNotice>}
-      <ExpenseForm
-        mode="edit"
-        expenseId={expense.expenseId}
-        version={expense.updatedAt}
-        defaultValues={expenseFormDefaults(expense)}
-        number={expense.expenseNumber}
-        today={todayIST()}
-        options={options}
-      />
+      <PageGroup>
+        {!expense.paidFor && <StatusNotice tone="warning">This expense was saved before expenses said where the money went. Fill in Paid for to save your changes.</StatusNotice>}
+        <ExpenseForm
+          mode="edit"
+          expenseId={expense.expenseId}
+          version={expense.updatedAt}
+          defaultValues={expenseFormDefaults(expense)}
+          number={expense.expenseNumber}
+          today={todayIST()}
+          options={options}
+        />
+      </PageGroup>
     </>
   );
 }

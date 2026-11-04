@@ -1,7 +1,7 @@
 // app/api/bookings/route.ts
-// GET  /api/bookings — one page of the ledger for the ledger's filters (?q, destination,
-//                      payment, status, archived=1, due, from / to (trip start,
-//                      YYYY-MM-DD), booked (invoice date, YYYY-MM-DD), page): { items, count and totals
+// GET  /api/bookings — one page of the ledger for the ledger's filters (?q, package,
+//                      payment, status, archived=1, due, tripFrom / tripTo (trip start,
+//                      YYYY-MM-DD), bookedFrom / bookedTo (invoice date, YYYY-MM-DD), page): { items, count and totals
 //                      of every match, summary figures }.
 // POST /api/bookings — create a booking; answers its reference (201).
 //

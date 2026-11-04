@@ -34,10 +34,12 @@ interface StatusProps {
   copy: ArchiveCopy;
   /** More items before Archive / Restore. */
   statusItems?: React.ReactNode;
+  /** False while it can't be archived yet (a cancelled booking): Archive stays, greyed out. The server refuses it too. */
+  canArchive?: boolean;
 }
 
 /** The record's own status items, then Archive… (opens the confirmation) or Restore. */
-function StatusItems({ archived, actions, onArchive, statusItems }: Pick<StatusProps, "archived" | "actions" | "statusItems"> & { onArchive: () => void }) {
+function StatusItems({ archived, actions, onArchive, statusItems, canArchive = true }: Pick<StatusProps, "archived" | "actions" | "statusItems" | "canArchive"> & { onArchive: () => void }) {
   return (
     <DropdownMenuGroup>
       {statusItems}
@@ -47,7 +49,7 @@ function StatusItems({ archived, actions, onArchive, statusItems }: Pick<StatusP
           Restore
         </DropdownMenuItem>
       ) : (
-        <DropdownMenuItem variant="destructive" onClick={onArchive}>
+        <DropdownMenuItem variant="destructive" disabled={!canArchive} onClick={onArchive}>
           <Archive />
           Archive…
         </DropdownMenuItem>

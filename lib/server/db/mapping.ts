@@ -49,6 +49,7 @@ export function toBookingDoc(booking: Booking, idempotencyKey?: string): Booking
     packageName: booking.packageName,
     destination: booking.destination,
     destinationKey: destinationKeyOf(booking.destination),
+    packageKey: nameKeyOf(booking.packageName),
     batchName: booking.batchName,
     tripStartDate: toDate(booking.tripStartDate),
     tripEndDate: toDate(booking.tripEndDate),
@@ -66,9 +67,11 @@ export function toBookingDoc(booking: Booking, idempotencyKey?: string): Booking
     invoiceNote: booking.invoiceNote,
     internalNotes: booking.internalNotes,
     slotAmount: booking.slotAmount,
+    ...(booking.packageType ? { packageType: booking.packageType } : {}),
     cancelledOn: booking.cancelledOn ? toDate(booking.cancelledOn) : null,
     refundAmount: booking.refundAmount,
     refundedOn: booking.refundedOn ? toDate(booking.refundedOn) : null,
+    refundedAt: booking.refundedAt ? new Date(booking.refundedAt) : null,
     ...(booking.closedBy ? { closedBy: booking.closedBy } : {}),
     ...(idempotencyKey ? { idempotencyKey } : {}),
   };
@@ -104,9 +107,11 @@ export function fromBookingDoc(doc: BookingDoc): Booking {
     invoiceNote: doc.invoiceNote,
     internalNotes: doc.internalNotes,
     slotAmount: doc.slotAmount ?? 0,
+    packageType: doc.packageType ?? null,
     cancelledOn: doc.cancelledOn ? formatDDMMYYYY(doc.cancelledOn) : null,
     refundAmount: doc.refundAmount ?? 0,
     refundedOn: doc.refundedOn ? formatDDMMYYYY(doc.refundedOn) : null,
+    refundedAt: doc.refundedAt ? doc.refundedAt.toISOString() : null,
     closedBy: doc.closedBy ?? null,
   };
 }
@@ -115,6 +120,7 @@ export function fromBookingDoc(doc: BookingDoc): Booking {
 export const BOOKING_PROJECTION = {
   customerPhoneDigits: 0,
   destinationKey: 0,
+  packageKey: 0,
   invoiceYear: 0,
   idempotencyKey: 0,
 } as const satisfies Document;

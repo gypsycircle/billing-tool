@@ -24,14 +24,16 @@ export function FormSection({
       aria-labelledby={id}
       className={cn(FORM_SECTION, className)}
     >
-      <div>
+      <div className="space-y-2">
         <p className="font-heading text-3xl leading-none font-light text-muted-foreground/45 tabular" aria-hidden>
           {number}
         </p>
-        <h2 id={id} className="mt-2 font-medium">
-          {title}
-        </h2>
-        {description && <p className="mt-1 text-sm text-pretty text-muted-foreground">{description}</p>}
+        <div className="space-y-1">
+          <h2 id={id} className="font-medium">
+            {title}
+          </h2>
+          {description && <p className="text-sm text-pretty text-muted-foreground">{description}</p>}
+        </div>
       </div>
       <div className={FORM_FIELDS}>{children}</div>
     </section>

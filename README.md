@@ -33,7 +33,7 @@ npm run dev
 node --env-file=.env.local scripts/seed-general.mjs
 ```
 
-Open [http://localhost:3001](http://localhost:3001): the access-code screen. After signing in you land on Bookings. Add the team, and any destinations, packages, routes and marketing channels the seed didn't, in **Settings**: the booking and expense forms pick from them.
+Open [http://localhost:3000](http://localhost:3000): the access-code screen. After signing in you land on Bookings. Add the team, and any destinations, packages, routes and marketing channels the seed didn't, in **Settings**: the booking and expense forms pick from them.
 
 ---
 
@@ -53,7 +53,7 @@ Three screens, in the top navigation (and in the ⌘K / `/` command menu):
   | Miscellaneous | typed |
 
   It's required, shown in the list and on the expense's page, and kept as it was saved (a later rename doesn't change it). Expenses saved before this ask for it on their next edit.
-- **Settings** (`/settings`): the **Team** (the people salaries are paid to: name, role, phone; they don't sign in) and the **Lists** behind the dropdowns (Destinations, Packages, Routes, Marketing channels), five to a page. The team is newest first, with a search (name, role, phone); the lists are by name. Each shows its active ones, or with **Show archived** its archived ones (Reset goes back). Add (keys **T** and **L**), edit or rename, archive and restore. Names are unique (ignoring case and extra spaces) within the team and within each list. Archived ones leave the dropdowns but stay on everything already saved.
+- **Settings** (`/settings`): the **Team** (the people salaries are paid to and who close bookings: name, role, phone; they don't sign in) and the **Lists** behind the dropdowns (Destinations, Packages, Routes, Marketing channels), five to a page. The team is newest first, with a search (name, role, phone); the lists are by name. Each shows its active ones, or with **Show archived … only** under **Filters** its archived ones (Reset goes back). Add (keys **T** and **L**), edit or rename, archive and restore. Names are unique (ignoring case and extra spaces) within the team and within each list. Archived ones leave the dropdowns but stay on everything already saved.
 
 Every change to a booking's amount paid is recorded with its date (the payments record), which is how cash collected is counted. Edits are safe with several people at once: a save made from an outdated screen is refused rather than overwriting someone else's change.
 
@@ -98,7 +98,7 @@ See `docs/security-runbook.md` for how to change the access code, rotate secrets
 ## Development Commands
 
 ```bash
-npm run dev        # Start dev server (http://localhost:3001)
+npm run dev        # Start dev server (http://localhost:3000)
 npm run build      # Build for production
 npm run start      # Start production build
 npm run lint       # Run ESLint

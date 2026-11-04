@@ -12,7 +12,6 @@ import type { LedgerSummary, LedgerTotals } from "@/lib/domain/summary";
 import {
   LEDGER_ROW_FIELDS,
   type Booking,
-  type BookingRef,
   type LedgerRow,
 } from "@/lib/domain/types";
 import { DuplicateNumberError } from "../errors";
@@ -33,11 +32,11 @@ export async function findBooking(id: string): Promise<Booking | null> {
   return doc ? fromBookingDoc(doc) : null;
 }
 
-const BILL_READ = [...BILL_FIELDS, "bookingStatus"] as const;
+const BILL_READ = [...BILL_FIELDS, "bookingStatus", "cancelledOn", "refundAmount", "refundedOn"] as const;
 const BILL_PROJECTION = bookingReads.projectionOf(BILL_READ);
 
 /** What the Bill of Supply prints, plus the status (archived bookings have no bill). */
-export async function findBillBooking(id: string): Promise<(BillBooking & Pick<Booking, "bookingStatus">) | null> {
+export async function findBillBooking(id: string): Promise<(BillBooking & Pick<Booking, "bookingStatus" | "cancelledOn" | "refundAmount" | "refundedOn">) | null> {
   const doc = await (await bookingsCollection()).findOne({ _id: id }, { projection: BILL_PROJECTION });
   return doc ? bookingReads.pickFromDoc(doc, BILL_READ) : null;
 }
@@ -57,7 +56,7 @@ export interface LedgerResult extends PageInfo {
 }
 
 const NO_TOTALS: LedgerTotals = {
-  count: 0, total: 0, received: 0, balance: 0, activeCount: 0, activeTotal: 0, activeReceived: 0, activeBalance: 0,
+  count: 0, total: 0, received: 0, balance: 0, activeCount: 0, activeTotal: 0, activeReceived: 0, activeBalance: 0, refunded: 0, refundTotal: 0,
 };
 const NO_SUMMARY: LedgerSummary = { activeCount: 0, activeTravellers: 0, outstanding: 0, collected: 0, refundsDueCount: 0, refundsDueAmount: 0, dueSoonCount: 0, dueSoonAmount: 0, overdueCount: 0 };
 
@@ -78,7 +77,7 @@ async function pageItems(filters: BookingFilters, match: Filter<BookingDoc>, ski
     .limit(limit)
     .toArray();
   // Bookings saved before these fields existed have no slot amount, refund or Closed by
-  return docs.map((doc) => ({ ...bookingReads.pickFromDoc(doc, LEDGER_ROW_FIELDS), slotAmount: doc.slotAmount ?? 0, refundAmount: doc.refundAmount ?? 0, closedBy: doc.closedBy ?? null }));
+  return docs.map((doc) => ({ ...bookingReads.pickFromDoc(doc, LEDGER_ROW_FIELDS), slotAmount: doc.slotAmount ?? 0, packageType: doc.packageType ?? null, refundAmount: doc.refundAmount ?? 0, closedBy: doc.closedBy ?? null }));
 }
 
 /**
@@ -166,31 +165,6 @@ export async function updateBookingIfVersion(booking: Booking, expectedUpdatedAt
   });
 }
 
-const REF_FIELDS = ["bookingId", "invoiceNumber", "updatedAt", "bookingStatus"] as const;
-const REF_PROJECTION = bookingReads.projectionOf(REF_FIELDS);
-
-/**
- * Sets only the booking status, in one atomic call, if the booking is still at
- * `expectedUpdatedAt` and matches `extraFilter` (e.g. "not archived").
- * Returns the booking's new reference, or null when nothing matched — the
- * caller tells why.
- */
-export async function setStatusIfVersion(
-  id: string,
-  expectedUpdatedAt: string,
-  status: Booking["bookingStatus"],
-  updatedAt: string,
-  extraFilter: Filter<BookingDoc> = {}
-): Promise<BookingRef | null> {
-  const expected = new Date(expectedUpdatedAt);
-  if (Number.isNaN(expected.getTime())) return null;
-  const doc = await (await bookingsCollection()).findOneAndUpdate(
-    { _id: id, updatedAt: expected, ...extraFilter },
-    { $set: { bookingStatus: status, updatedAt: new Date(updatedAt) } },
-    { returnDocument: "after", projection: REF_PROJECTION }
-  );
-  return doc ? bookingReads.pickFromDoc(doc, REF_FIELDS) : null;
-}
 
 // ── Health ────────────────────────────────────────────────────────────────
 

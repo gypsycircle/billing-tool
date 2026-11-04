@@ -10,20 +10,21 @@ import fontkit from "@pdf-lib/fontkit";
 import { decodePDFRawStream, PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
+import { billNoteCounts } from "@/lib/domain/booking.schema";
 import { calculateBookingAmounts } from "@/lib/domain/calculations";
 import { billContent, type BillBooking } from "./content";
-import { TERMS } from "./company";
+import { TERMS, termsFor } from "./company";
 import { loadBillAssets } from "./assets";
 import { layoutBill, type Faces } from "./layout";
-import { BillDoesNotFitError, billProblems, renderBillOfSupply } from "./render";
+import { BillDoesNotFitError, billProblems, loadBillFitCheck, renderBillOfSupply } from "./render";
 import { BOTTOM_LIMIT, CARD, LOGO, MARGIN, PAGE_HEIGHT, PAGE_WIDTH, QR_SIZE } from "./theme";
 
 const INNER_LEFT = MARGIN + CARD.padX;
 const INNER_RIGHT = PAGE_WIDTH - MARGIN - CARD.padX;
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
-function bill(input: Omit<BillBooking, "discountPercentage" | "totalAmount" | "balanceAmount">): BillBooking {
-  return { ...input, ...calculateBookingAmounts(input) };
+function bill(input: Omit<BillBooking, "discountPercentage" | "totalAmount" | "balanceAmount" | "packageType">): BillBooking {
+  return { packageType: null, ...input, ...calculateBookingAmounts(input) };
 }
 
 const SAMPLE = bill({
@@ -292,10 +293,12 @@ describe("renderBillOfSupply — content", () => {
     expect(note.baseline).toBeLessThan(first(runs, "BANK DETAILS").baseline);
   });
 
-  it("leaves the notes block out when there is no note", async () => {
-    const { all } = await render(PLAIN, "plain");
-    expect(all.replace(/\s/g, "")).not.toContain("NOTES");
-    expect(all).not.toContain("No note");
+  it("says so under NOTES when there is no note, beside the totals", async () => {
+    const { all, runs } = await render(PLAIN, "plain");
+    expect(all.replace(/\s/g, "")).toContain("NOTES");
+    const none = first(runs, "No note on this bill.");
+    expect(none.x1).toBeLessThan(first(runs, "Total Amount").x0);
+    expect(none.baseline).toBeLessThan(first(runs, "BANK DETAILS").baseline);
   });
 
   it("prints a zero discount as 0 and (0%)", async () => {
@@ -444,5 +447,154 @@ describe("billProblems", () => {
     });
     expect(problems.invoiceNote).toBe("Invoice note is too long to fit on the bill.");
     expect(problems.ratePerPerson).toBe("Rate per person is too large to fit on the bill.");
+  });
+});
+
+describe("a cancelled booking's bill", () => {
+  const CANCELLED = { cancelledOn: "04/11/2026", refundAmount: 15_000, refundedOn: null };
+  const VERSIONS = [
+    ["refund due", { ...SAMPLE, cancellation: CANCELLED }, "Refund Due", "15,000", "25,000", "Fifteen Thousand Rupees"],
+    ["refund paid", { ...SAMPLE, cancellation: { ...CANCELLED, refundedOn: "05/11/2026" } }, "Refund Paid", "15,000", "25,000", "Fifteen Thousand Rupees"],
+    ["no refund", { ...SAMPLE, cancellation: { ...CANCELLED, refundAmount: 0 } }, "Refund", "0", "40,000", "Zero Rupees"],
+  ] as const;
+
+  it.each(VERSIONS)("%s: one page, the seal, then the charge and the refund in place of the balance, and the refund in words", async (name, booking, label, refund, charge, words) => {
+    const { pages, runs, all, squeezed } = await render(booking, `cancelled-${name.replace(" ", "-")}`);
+    expect(pages).toBe(1);
+    expect(squeezed).toContain("CANCELLED");
+    expect(all).toContain("on 4 Nov 2026");
+    expect(all.includes("Refund paid 5 Nov 2026")).toBe(name === "refund paid");
+    expect(runs.some((r) => r.text === "Balance")).toBe(false);
+    const line = (text: string) => runs.filter((r) => Math.abs(r.baseline - first(runs, text).baseline) < 0.5).map((r) => r.text).join(" ");
+    expect(line(label)).toContain(refund);
+    expect(line("Cancellation Charge")).toContain(charge);
+    // The order: received, the charge, the refund last
+    expect(first(runs, "Received Amount").baseline).toBeLessThan(first(runs, "Cancellation Charge").baseline);
+    expect(first(runs, "Cancellation Charge").baseline).toBeLessThan(first(runs, label).baseline);
+    expect(squeezed).toContain(`${label.toUpperCase()}(INWORDS)`.replace(/\s/g, ""));
+    expect(squeezed).not.toContain("TOTALAMOUNT(INWORDS)");
+    expect(all).toContain(words);
+  });
+
+  it.each(VERSIONS)("%s: the seal is at the bottom left under the notes, clear of everything", async (_name, booking) => {
+    const { runs } = await render(booking, "cancelled-overlap");
+    const seal = first(runs, "CANCELLED");
+    expect(seal.x0).toBeGreaterThanOrEqual(INNER_LEFT);
+    expect(seal.x1).toBeLessThan(first(runs, "Total Amount").x0);
+    expect(seal.baseline).toBeGreaterThan(first(runs, "COMPLIMENTARY FOR 5 PAX HAS BEEN ADDED.").baseline);
+    expect(seal.baseline).toBeLessThan(first(runs, "BANK DETAILS").baseline);
+    const boxes = runs.map(box);
+    runs.forEach((a, i) => {
+      runs.slice(i + 1).forEach((b, j) => {
+        const [p, q] = [boxes[i], boxes[i + 1 + j]];
+        const overlap = p.x0 < q.x1 - 0.5 && q.x0 < p.x1 - 0.5 && p.top < q.bottom - 0.5 && q.top < p.bottom - 0.5;
+        expect(overlap, `${a.text} / ${b.text}`).toBe(false);
+      });
+    });
+  });
+
+  it("spaces its amounts like the active bill's, whatever the number of rows", async () => {
+    const baselines = async (booking: BillBooking, name: string, labels: string[]) => {
+      const { runs } = await render(booking, name);
+      return labels.map((label) => first(runs, label).baseline);
+    };
+    const gaps = (ys: number[]) => ys.slice(1).map((y, i) => Math.round(Math.abs(y - ys[i])));
+    const active = gaps(await baselines(SAMPLE, "gap-active", ["Total Amount", "Received Amount", "Balance"]));
+    const paid = gaps(await baselines({ ...SAMPLE, cancellation: { ...CANCELLED, refundedOn: "05/11/2026" } }, "gap-cancelled", ["Total Amount", "Received Amount", "Cancellation Charge", "Refund Paid"]));
+    expect(active).toEqual([16, 16]);
+    expect(paid).toEqual([16, 16, 16]);
+  });
+
+  it("the save's fit check allows for cancelling, so whatever passes prints both ways", async () => {
+    const check = await loadBillFitCheck();
+    const withNote = (words: number) => ({ ...LONGEST, invoiceNote: "Note words here ".repeat(words).trim() });
+    const fits = (booking: BillBooking) => Object.keys(check(booking)).length === 0;
+    let words = 1;
+    while (fits(withNote(words + 1))) words += 1;
+    const longest = withNote(words);
+    const cancelledCopy = { ...longest, cancellation: { ...CANCELLED, refundAmount: longest.amountPaid, refundedOn: "05/11/2026" } };
+    expect(await billProblems(longest)).toEqual({});
+    expect(await billProblems(cancelledCopy)).toEqual({});
+    await expect(renderBillOfSupply(longest)).resolves.toBeInstanceOf(Uint8Array);
+    await expect(renderBillOfSupply(cancelledCopy)).resolves.toBeInstanceOf(Uint8Array);
+    for (const booking of [SAMPLE, PLAIN, LONGEST]) expect(check(booking)).toEqual({});
+  });
+
+  it("keeps the seal below a long note, inside the card", async () => {
+    const paragraphs = Array.from({ length: 4 }, (_, i) => `Note line ${i + 1}`).join("\n");
+    const { pages, runs } = await render({ ...SAMPLE, invoiceNote: paragraphs, cancellation: CANCELLED }, "cancelled-long-note");
+    expect(pages).toBe(1);
+    expect(first(runs, "CANCELLED").baseline).toBeGreaterThan(first(runs, "Note line 4").baseline);
+    expect(first(runs, "on 4 Nov 2026").baseline).toBeLessThan(first(runs, "BANK DETAILS").baseline);
+  });
+
+  it("holds new notes to the cancelled bill, but lets an edit through on a booking already too long", async () => {
+    const check = await loadBillFitCheck();
+    const long = { ...SAMPLE, invoiceNote: "word ".repeat(100).trim() };
+    expect(await billProblems(long)).toEqual({});
+    // New, or a note made longer: refused, naming the note
+    expect(check(long).invoiceNote).toBeTruthy();
+    expect(check(long, SAMPLE).invoiceNote).toBeTruthy();
+    // Already that long: a payment on it still saves
+    expect(check({ ...long, amountPaid: 41_000 }, long)).toEqual({});
+    // But it must still fit as it stands
+    const tooLong = { ...SAMPLE, invoiceNote: "A very long note ".repeat(70) };
+    expect(check(tooLong, long).invoiceNote).toBeTruthy();
+  });
+
+  it.each([
+    ["in capitals, on a normal bill", SAMPLE, "COMPL"],
+    ["in capitals, on a plain bill", PLAIN, "COMPL"],
+    ["in ordinary words, on the longest bill", LONGEST, "words"],
+  ] as const)("the fullest note the form allows prints with the seal clear of it, %s", async (_name, base, word) => {
+    const note = [0, 1, 2].map((i) => Array.from({ length: i === 2 ? 9 : 8 }, () => word).join(" ")).join("\n");
+    expect(billNoteCounts(note)).toEqual({ words: 25, lines: 3 });
+    const full = { ...base, packageType: "Group" as const, invoiceNote: note };
+    expect((await loadBillFitCheck())(full)).toEqual({});
+    expect((await loadBillFitCheck())({ ...full, packageType: "Private" })).toEqual({});
+    const { pages, runs } = await render({ ...full, cancellation: { ...CANCELLED, refundAmount: 1, refundedOn: "05/11/2026" } }, "cancelled-fullest-note");
+    expect(pages).toBe(1);
+    const lastNote = Math.max(...runs.filter((r) => r.text.includes(word)).map((r) => r.baseline));
+    expect(first(runs, "CANCELLED").baseline - lastNote).toBeGreaterThanOrEqual(14);
+    expect(first(runs, "on 4 Nov 2026").baseline).toBeLessThan(first(runs, "BANK DETAILS").baseline);
+  });
+
+  it.each([["Group", "Slot booking amount:"], ["Private", "Refund limit:"]] as const)("a %s bill prints its type and its own second term, and fits both ways", async (packageType, lead) => {
+    const check = await loadBillFitCheck();
+    for (const base of [SAMPLE, PLAIN, LONGEST]) {
+      const typed = { ...base, packageType };
+      expect(check(typed)).toEqual({});
+      const { pages, all, runs } = await render({ ...typed, cancellation: { ...CANCELLED, refundAmount: 1, refundedOn: "05/11/2026" } }, `${packageType.toLowerCase()}-cancelled`);
+      expect(pages).toBe(1);
+      expect(all).toContain(`${packageType} package`);
+      expect(first(runs, lead)).toBeTruthy();
+      expect(first(runs, `${packageType} package`).baseline).toBeGreaterThan(first(runs, base.packageName.toUpperCase()).baseline);
+    }
+    const { all } = await render({ ...SAMPLE, packageType }, `${packageType.toLowerCase()}-active`);
+    expect(all.includes("Slot booking amount")).toBe(packageType === "Group");
+    expect(all.includes("Private packages have no slot booking amount.")).toBe(packageType === "Private");
+  });
+
+  it("a bill with no type prints no type line and today's terms", async () => {
+    const { all } = await render(SAMPLE, "no-type");
+    expect(all).not.toMatch(/(Group|Private) package/);
+    expect(all).toContain("Slot booking amount");
+    expect(termsFor(null)).toBe(TERMS);
+    expect(termsFor("Group")).toBe(TERMS);
+  });
+
+  it("adds exactly its seal to the page's shapes", async () => {
+    const assets = await loadBillAssets();
+    const faces = Object.fromEntries(Object.entries(assets.fonts).map(([key, font]) => [key, font.face])) as Faces;
+    const seals = layoutBill(billContent({ ...SAMPLE, cancellation: CANCELLED }), faces).shapes.length - layoutBill(billContent(SAMPLE), faces).shapes.length;
+    expect(seals).toBe(2);
+  });
+
+  it("the same bill without a cancellation has no seal and keeps its balance", async () => {
+    const { all } = await render(SAMPLE, "active-check");
+    expect(all).not.toContain("CANCELLED");
+    expect(all).toContain("Balance");
+    expect(all).not.toContain("Cancellation Charge");
+    expect(all.replace(/\s/g, "").toUpperCase()).toContain("TOTALAMOUNT(INWORDS)");
   });
 });

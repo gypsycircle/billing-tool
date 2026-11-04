@@ -12,10 +12,13 @@ describe("nameKeyOf", () => {
 });
 
 describe("team member schemas", () => {
-  it("needs a name; role and phone are optional", () => {
-    expect(teamMemberDraftSchema.parse({ name: " Ravi " })).toEqual({ name: "Ravi", role: "", phone: "" });
-    expect(teamMemberDraftSchema.safeParse({ name: "Ravi", phone: "98470 12345" }).success).toBe(true);
-    expect(teamMemberDraftSchema.safeParse({ name: "Ravi", phone: "123" }).success).toBe(false);
+  it("needs a name and a role; the phone is optional", () => {
+    expect(teamMemberDraftSchema.parse({ name: " Ravi ", role: " Guide " })).toEqual({ name: "Ravi", role: "Guide", phone: "" });
+    expect(teamMemberDraftSchema.safeParse({ name: "Ravi" }).success).toBe(false);
+    expect(teamMemberDraftSchema.safeParse({ name: "Ravi", role: "" }).success).toBe(false);
+    expect(updateTeamMemberSchema.safeParse({ role: "" }).success).toBe(false);
+    expect(teamMemberDraftSchema.safeParse({ name: "Ravi", role: "Guide", phone: "98470 12345" }).success).toBe(true);
+    expect(teamMemberDraftSchema.safeParse({ name: "Ravi", role: "Guide", phone: "123" }).success).toBe(false);
     expect(teamMemberDraftSchema.safeParse({ name: "Ravi", role: "x".repeat(51) }).success).toBe(false);
   });
 

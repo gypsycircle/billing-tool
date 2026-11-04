@@ -1,6 +1,7 @@
 // lib/domain/general.ts
 // The general lists behind the app's dropdowns: destinations, packages and
-// routes (the booking form) and marketing channels (marketing expenses).
+// routes (the booking form), marketing channels (marketing expenses) and roles
+// (the team form).
 // Bookings and expenses store the chosen name itself, so renaming or
 // archiving an item later never rewrites what was already saved.
 
@@ -11,6 +12,7 @@ export const GENERAL_KINDS = {
   package: { title: "Packages", one: "package", max: 150 },
   route: { title: "Routes", one: "route", max: 200 },
   marketing: { title: "Marketing channels", one: "marketing channel", max: 80 },
+  role: { title: "Roles", one: "role", max: 50 },
 } as const satisfies Record<string, { title: string; one: string; max: number }>;
 
 export type GeneralKind = keyof typeof GENERAL_KINDS;
@@ -45,4 +47,21 @@ export function bookingListChoices(names: readonly string[], saved = ""): Record
   const choices: Record<string, string> = Object.fromEntries(names.map((name) => [nameKeyOf(name) === savedKey ? saved : name, name]));
   if (saved && !(saved in choices)) choices[saved] = `${saved} · Not in the list`;
   return choices;
+}
+
+/**
+ * The Route dropdown's "Other": the booking stores the route typed in
+ * (`routeOther`) in its place, and the Routes list stays as it is. Never stored.
+ */
+export const ROUTE_OTHER = "__other__";
+
+/** The Route dropdown's choices: the list, then Other. `chosen` is what the form opened with. */
+export function routeChoices(names: readonly string[], chosen = ""): Record<string, string> {
+  return { ...bookingListChoices(names, chosen === ROUTE_OTHER ? "" : chosen), [ROUTE_OTHER]: "Other (type the route)" };
+}
+
+/** How a saved route opens in the form: chosen when it's in the list, otherwise as Other with its text. */
+export function routeFormValues(saved: string, names: readonly string[]): { routeDescription: string; routeOther: string } {
+  const listed = !saved || names.some((name) => nameKeyOf(name) === nameKeyOf(saved));
+  return listed ? { routeDescription: saved, routeOther: "" } : { routeDescription: ROUTE_OTHER, routeOther: saved };
 }

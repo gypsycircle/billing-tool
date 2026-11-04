@@ -36,6 +36,9 @@ export const EXPENSE_TYPE_IDS = Object.keys(EXPENSE_TYPES) as [ExpenseType, ...E
 export const EXPENSE_STATUSES = ARCHIVABLE_STATUSES;
 export type ExpenseStatus = ArchivableStatus;
 
+/** What an expense's status reads as: Spent, or Archived. Only the badge says Spent; the stored status and the API stay Active. */
+export const expenseStatusBadge = (status: ExpenseStatus): "Spent" | "Archived" => (status === "Active" ? "Spent" : status);
+
 export const expenseKindOf = (type: ExpenseType): ExpenseKind => EXPENSE_TYPES[type].kind;
 export const paidForOf = (type: ExpenseType) => EXPENSE_TYPES[type].paidFor;
 

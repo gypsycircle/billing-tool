@@ -92,7 +92,7 @@ export class MissingVersionError extends Error {
 /** Archived records are read-only until restored — maps to 409. */
 export class ArchivedRecordError extends Error {
   constructor(record: RecordName) {
-    super(`Archived ${record}s can't be changed. Restore it first.`);
+    super(`This ${record} is archived. Restore it before changing it.`);
     this.name = "ArchivedRecordError";
   }
 }

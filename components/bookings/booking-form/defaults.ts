@@ -4,6 +4,7 @@
 
 import type { z } from "zod";
 import type { bookingDraftSchema } from "@/lib/domain/booking.schema";
+import { routeFormValues } from "@/lib/domain/general";
 import type { Booking } from "@/lib/domain/types";
 
 /** What the form holds while editing (before Zod trims/validates). */
@@ -35,11 +36,14 @@ export function newBookingDefaults(today: string): BookingFormInput {
     tripStartDate: "",
     tripEndDate: "",
     routeDescription: "",
+    routeOther: "",
     travellers: 1,
     ratePerPerson: Number.NaN,
     discountAmount: 0,
     amountPaid: 0,
     slotAmount: 0,
+    // Nothing chosen yet: the form asks for it before it saves
+    packageType: "" as BookingFormInput["packageType"],
     invoiceNote: "",
     internalNotes: "",
   };
@@ -50,8 +54,8 @@ export function invoiceInfoOf(booking: Booking): InvoiceInfo {
   return { number: booking.invoiceNumber, date: booking.invoiceDate, dueDate: booking.dueDate };
 }
 
-/** The editable fields of a saved booking. */
-export function bookingFormDefaults(booking: Booking): BookingFormInput {
+/** The editable fields of a saved booking; `routeNames` is the Routes list. */
+export function bookingFormDefaults(booking: Booking, routeNames: readonly string[]): BookingFormInput {
   return {
     invoiceDate: booking.invoiceDate,
     closedById: booking.closedBy?.refId ?? "",
@@ -63,12 +67,13 @@ export function bookingFormDefaults(booking: Booking): BookingFormInput {
     batchName: booking.batchName,
     tripStartDate: booking.tripStartDate,
     tripEndDate: booking.tripEndDate,
-    routeDescription: booking.routeDescription,
+    ...routeFormValues(booking.routeDescription, routeNames),
     travellers: booking.travellers,
     ratePerPerson: booking.ratePerPerson,
     discountAmount: booking.discountAmount,
     amountPaid: booking.amountPaid,
     slotAmount: booking.slotAmount,
+    packageType: booking.packageType ?? ("" as BookingFormInput["packageType"]),
     invoiceNote: booking.invoiceNote,
     internalNotes: booking.internalNotes,
   };

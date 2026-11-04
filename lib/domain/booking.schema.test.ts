@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { bookingDraftSchema, bookingFormSchema, createBookingSchema, invoiceDateIssue, tripEndIssue, tripStartIssue, updateBookingSchema } from "./booking.schema";
+import { billNoteCounts, bookingDraftSchema, bookingFormSchema, createBookingSchema, invoiceDateChoices, invoiceDateIssue, tripEndIssue, tripStartIssue, updateBookingSchema } from "./booking.schema";
 import type { BookingInput } from "./types";
 
 const sample: BookingInput = {
+  packageType: "Group",
   slotAmount: 0,
   invoiceNumber: "142",
   invoiceDate: "13/01/2026",
@@ -33,6 +34,13 @@ function fieldErrors(input: unknown): string[] {
 }
 
 describe("createBookingSchema", () => {
+  it("says a date left empty is required, and one that isn't a date is invalid", () => {
+    const message = (tripStartDate: string) => createBookingSchema.safeParse({ ...sample, tripStartDate }).error?.issues.find((i) => i.path[0] === "tripStartDate")?.message;
+    expect(message("")).toBe("Trip start date is required.");
+    expect(message("   ")).toBe("Trip start date is required.");
+    expect(message("31/02/2026")).toBe("Trip start date must be a valid date (DD/MM/YYYY).");
+  });
+
   it("accepts the sample bill", () => {
     expect(createBookingSchema.safeParse(sample).success).toBe(true);
   });
@@ -191,12 +199,17 @@ describe("trip end after the invoice date", () => {
 describe("invoice date of a new booking", () => {
   const today = "13/01/2026";
 
-  it("is today or yesterday only", () => {
+  it("is today, yesterday or the day before only", () => {
+    const refused = "Invoice date must be today, yesterday or the day before.";
+    expect(invoiceDateChoices(today)).toEqual([today, "12/01/2026", "11/01/2026"]);
     expect(invoiceDateIssue(today, today)).toBeNull();
     expect(invoiceDateIssue("12/01/2026", today)).toBeNull();
-    expect(invoiceDateIssue("14/01/2026", today)).toBe("Invoice date must be today or yesterday.");
-    expect(invoiceDateIssue("11/01/2026", today)).toBe("Invoice date must be today or yesterday.");
+    expect(invoiceDateIssue("11/01/2026", today)).toBeNull();
+    expect(invoiceDateIssue("14/01/2026", today)).toBe(refused);
+    expect(invoiceDateIssue("10/01/2026", today)).toBe(refused);
     expect(invoiceDateIssue("31/12/2025", "01/01/2026")).toBeNull();
+    expect(invoiceDateIssue("30/12/2025", "01/01/2026")).toBeNull();
+    expect(invoiceDateIssue("29/12/2025", "01/01/2026")).toBe(refused);
   });
 
   it("is checked by the create form only", () => {
@@ -211,5 +224,57 @@ describe("invoice date of a new booking", () => {
     expect(bookingFormSchema({ today }).safeParse({ ...startsToday, invoiceDate: "12/01/2026" }).success).toBe(true);
     const paths = bookingFormSchema({ today }).safeParse({ ...startsToday, invoiceDate: today }).error?.issues.map((i) => i.path.join(".")) ?? [];
     expect(paths).toContain("tripStartDate");
+  });
+});
+
+describe("the bill note's limit", () => {
+  const words = (n: number) => Array.from({ length: n }, () => "note").join(" ");
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `Line ${i}`).join("\n");
+  const noteIssue = (input: unknown) => updateBookingSchema.safeParse(input).error?.issues.find((i) => i.path[0] === "invoiceNote")?.message;
+
+  it("counts words and printed lines, blank lines aside", () => {
+    expect(billNoteCounts("")).toEqual({ words: 0, lines: 0 });
+    expect(billNoteCounts("  One two\n\nthree ")).toEqual({ words: 3, lines: 2 });
+  });
+
+  it("allows 25 words and 3 lines, and no more, when a note is sent", () => {
+    expect(noteIssue({ invoiceNote: words(25) })).toBeUndefined();
+    expect(noteIssue({ invoiceNote: words(26) })).toContain("25 words");
+    expect(noteIssue({ invoiceNote: lines(3) })).toBeUndefined();
+    expect(noteIssue({ invoiceNote: lines(4) })).toContain("3 lines");
+  });
+
+  it("the form lets an older, longer note stay unchanged, but holds a changed one to the limit", () => {
+    const saved = words(40);
+    const issueWith = (invoiceNote: string) => bookingFormSchema({ saved: { invoiceNote } }).safeParse({ ...sample, closedById: "7f9c2ba4-e88f-4d6f-8a3e-2f1b6c3d4e5f", invoiceNote: saved }).error?.issues.find((i) => i.path[0] === "invoiceNote");
+    expect(issueWith(saved)).toBeUndefined();
+    expect(issueWith("something else")?.message).toContain("25 words");
+  });
+
+  it("the full record, read when any other field is edited, takes an older longer note", () => {
+    expect(createBookingSchema.safeParse({ ...sample, invoiceNote: words(40) }).success).toBe(true);
+  });
+});
+
+describe("package type and slot amount", () => {
+  const issue = (over: object, field: string) => createBookingSchema.safeParse({ ...sample, ...over }).error?.issues.find((i) => i.path[0] === field)?.message;
+
+  it("needs a type", () => {
+    expect(issue({ packageType: undefined }, "packageType")).toBe("Choose the package type.");
+    expect(issue({ packageType: "Solo" }, "packageType")).toBe("Choose the package type.");
+  });
+
+  it("a group package can have any slot amount, from ₹0", () => {
+    expect(issue({ packageType: "Group", slotAmount: 0 }, "slotAmount")).toBeUndefined();
+    expect(issue({ packageType: "Group", slotAmount: 2_000 }, "slotAmount")).toBeUndefined();
+  });
+
+  it("a private package can only have ₹0", () => {
+    expect(issue({ packageType: "Private", slotAmount: 0 }, "slotAmount")).toBeUndefined();
+    expect(issue({ packageType: "Private", slotAmount: 1 }, "slotAmount")).toBe("A private package has no slot amount.");
+  });
+
+  it.each(["amountPaid", "slotAmount", "ratePerPerson", "discountAmount"])("%s can't be negative", (field) => {
+    expect(issue({ [field]: -200 }, field)).toContain("cannot be negative");
   });
 });

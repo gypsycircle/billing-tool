@@ -4,6 +4,10 @@
 export const PAYMENT_STATUSES = ["Unpaid", "Partial", "Paid"] as const;
 export const BOOKING_STATUSES = ["Active", "Cancelled", "Archived"] as const;
 
+/** Group packages take a non-refundable slot amount; private ones have none. */
+export const PACKAGE_TYPES = ["Group", "Private"] as const;
+
+export type PackageType = (typeof PACKAGE_TYPES)[number];
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
@@ -24,6 +28,7 @@ export interface Booking {
   customerPhone: string;      // mobile; printed under BILL TO
   customerEmail: string;      // customer email ("" if none) — never printed
   packageName: string;        // SERVICES title
+  packageType: PackageType | null; // printed under it; null on bookings saved before it existed, until their next edit
   destination: string;        // printed in the invoice band
   batchName: string;          // BATCH column
   tripStartDate: string;      // DD/MM/YYYY
@@ -36,7 +41,7 @@ export interface Booking {
   discountPercentage: number; // derived — discount ÷ gross × 100
   totalAmount: number;        // derived — gross − discount
   amountPaid: number;         // cumulative received
-  slotAmount: number;         // non-refundable if cancelled — never printed
+  slotAmount: number;         // non-refundable if cancelled; always 0 on a private package — never printed
   balanceAmount: number;      // derived — total − paid
   paymentStatus: PaymentStatus; // derived
   bookingStatus: BookingStatus;
@@ -45,6 +50,7 @@ export interface Booking {
   cancelledOn: string | null; // DD/MM/YYYY — the day it was cancelled
   refundAmount: number;       // what goes back; cancelled bookings only
   refundedOn: string | null;  // DD/MM/YYYY — the day it went back; null while still due
+  refundedAt: string | null;  // ISO 8601 — the moment it was marked paid; null on refunds marked before this was kept
   closedBy: ClosedBy | null;  // who closed it — never printed; null on bookings saved before it existed
 }
 
@@ -55,12 +61,12 @@ export interface ClosedBy {
 }
 
 /**
- * The Closed by dropdown: active team members by name (value = ID), plus the
- * booking's own person if they've been archived since (it saves unchanged).
+ * The Closed by dropdown: active Sales team members by name (value = ID), plus
+ * the booking's own person if they aren't any more (it saves unchanged).
  */
 export function closedByChoices(team: readonly { id: string; name: string }[], saved: ClosedBy | null = null): Record<string, string> {
   const choices: Record<string, string> = Object.fromEntries(team.map(({ id, name }) => [id, name]));
-  if (saved && !(saved.refId in choices)) choices[saved.refId] = `${saved.label} · Archived`;
+  if (saved && !(saved.refId in choices)) choices[saved.refId] = `${saved.label} · Not in the list`;
   return choices;
 }
 
@@ -73,6 +79,7 @@ export interface BookingInput {
   customerPhone: string;
   customerEmail: string;
   packageName: string;
+  packageType: PackageType;
   destination: string;
   batchName: string;
   tripStartDate: string;
@@ -117,11 +124,11 @@ export function bookingRefOf(booking: BookingRef): BookingRef {
 }
 
 /** What the status actions and bill download in the browser need (the row menu, the detail header). */
-export type BookingActionTarget = BookingRef & Pick<Booking, "customerName" | "tripStartDate" | "totalAmount" | "amountPaid" | "slotAmount" | "refundedOn">;
+export type BookingActionTarget = BookingRef & Pick<Booking, "customerName" | "tripStartDate" | "totalAmount" | "amountPaid" | "slotAmount" | "packageType" | "refundedOn">;
 
 export function actionTargetOf(booking: BookingActionTarget): BookingActionTarget {
-  const { customerName, tripStartDate, totalAmount, amountPaid, slotAmount, refundedOn } = booking;
-  return { ...bookingRefOf(booking), customerName, tripStartDate, totalAmount, amountPaid, slotAmount, refundedOn };
+  const { customerName, tripStartDate, totalAmount, amountPaid, slotAmount, packageType, refundedOn } = booking;
+  return { ...bookingRefOf(booking), customerName, tripStartDate, totalAmount, amountPaid, slotAmount, packageType, refundedOn };
 }
 
 /** One ledger row: only the columns the table shows, plus what its menu needs. */
@@ -143,6 +150,7 @@ export const LEDGER_ROW_FIELDS = [
   "paymentStatus",
   "bookingStatus",
   "slotAmount",
+  "packageType",
   "refundAmount",
   "refundedOn",
 ] as const satisfies readonly (keyof Booking)[];

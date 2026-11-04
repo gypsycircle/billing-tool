@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expenseDateIssue, expenseDraftSchema, expenseFormSchema, updateExpenseSchema } from "./expense.schema";
 import { expenseFilterParams, parseExpenseFilters } from "./expense-filters";
-import { paidForLabel, EXPENSE_TYPE_OPTIONS, expenseKindOf, formatExpenseNumber, paidForInput, paidForPreview } from "./expenses";
+import { paidForLabel, EXPENSE_TYPE_OPTIONS, expenseKindOf, formatExpenseNumber, paidForInput, paidForPreview, expenseStatusBadge } from "./expenses";
 
 const PACKAGE_ID = "33333333-3333-4333-8333-333333333333";
 const draft = { expenseType: "package_cost", amount: 25_000, expenseDate: "20/10/2026", note: "Kedarkantha camp", paidForId: PACKAGE_ID };
@@ -152,5 +152,12 @@ describe("expense filters", () => {
     expect(parseExpenseFilters({ type: "wages", paidFor: id }).paidFor).toBeUndefined();
     expect(parseExpenseFilters({ paidFor: id }).paidFor).toBeUndefined();
     expect(parseExpenseFilters({ type: "salary", paidFor: "not-an-id" }).paidFor).toBeUndefined();
+  });
+});
+
+describe("expenseStatusBadge", () => {
+  it("reads Spent for an active expense, and Archived for an archived one", () => {
+    expect(expenseStatusBadge("Active")).toBe("Spent");
+    expect(expenseStatusBadge("Archived")).toBe("Archived");
   });
 });

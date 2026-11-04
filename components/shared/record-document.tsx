@@ -6,7 +6,7 @@
 
 import { amountToWords } from "@/lib/domain/words";
 import { cn } from "@/lib/utils";
-import { CARD, RECORD_BAND } from "./layout-classes";
+import { CARD, RECORD_BAND, RECORD_FOOT } from "./layout-classes";
 import { Money } from "./money";
 
 export function RecordDocument({
@@ -28,10 +28,10 @@ export function RecordDocument({
   );
 }
 
-/** A small label (eyebrow, with an optional icon) over its content, which sets its own spacing. */
+/** A small label (eyebrow, with an optional icon) over its content. */
 export function LabeledBlock({ label, icon, className, children }: { label: string; icon?: React.ReactNode; className?: string; children: React.ReactNode }) {
   return (
-    <div className={className}>
+    <div className={cn("space-y-2", className)}>
       <p className={cn("eyebrow text-muted-foreground", icon && "flex items-center gap-1.5")}>
         {icon}
         {label}
@@ -45,8 +45,10 @@ export function LabeledBlock({ label, icon, className, children }: { label: stri
 export function PartyBlock({ label, name, className, children }: { label: string; name: string; className?: string; children: React.ReactNode }) {
   return (
     <LabeledBlock label={label} className={className}>
-      <p className="mt-2 font-heading text-2xl font-medium break-words">{name}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{children}</p>
+      <div className="space-y-1">
+        <p className="font-heading text-2xl font-medium break-words">{name}</p>
+        <p className="text-sm text-muted-foreground">{children}</p>
+      </div>
     </LabeledBlock>
   );
 }
@@ -75,23 +77,33 @@ export function NotesAndFigures({
   note,
   noNote,
   words,
+  seal,
   children,
 }: {
   note: string;
   /** Shown when there is no note. */
   noNote: string;
   words: { amount: number; label?: string };
+  /** A stamp: under the notes at the bottom left, or on phones under the figures on the right. */
+  seal?: React.ReactNode;
   /** The figures (DocumentTotal, FigureRow). */
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-8 px-6 pt-4 pb-6 sm:grid-cols-[minmax(0,1fr)_18rem]">
-      <LabeledBlock label="Notes">
-        <p className="mt-2 text-sm text-pretty whitespace-pre-line">{note || <span className="text-muted-foreground italic">{noNote}</span>}</p>
-      </LabeledBlock>
-      <div className="space-y-2 text-sm">
-        <dl className="space-y-2">{children}</dl>
-        <AmountInWords amount={words.amount} label={words.label} className="pt-3 text-right" />
+    <div className={RECORD_FOOT}>
+      <div className="flex flex-col justify-between gap-6">
+        <LabeledBlock label="Notes">
+          <p className="text-sm text-pretty whitespace-pre-line">{note || <span className="text-muted-foreground italic">{noNote}</span>}</p>
+        </LabeledBlock>
+        {seal && <div className="hidden self-start sm:block">{seal}</div>}
+      </div>
+      {/* A gap, not space-y: the seal is hidden here on wide screens */}
+      <div className="flex flex-col gap-4 text-sm">
+        <div className="space-y-5">
+          <dl className="space-y-2">{children}</dl>
+          <AmountInWords amount={words.amount} label={words.label} className="text-right" />
+        </div>
+        {seal && <div className="flex justify-end sm:hidden">{seal}</div>}
       </div>
     </div>
   );
@@ -110,8 +122,8 @@ export function AmountInWords({
   textClassName?: string;
 }) {
   return (
-    <LabeledBlock label={label} className={className}>
-      <p className={cn("mt-1 font-heading italic", textClassName)}>{amountToWords(amount)}</p>
+    <LabeledBlock label={label} className={cn("space-y-1", className)}>
+      <p className={cn("font-heading italic", textClassName)}>{amountToWords(amount)}</p>
     </LabeledBlock>
   );
 }

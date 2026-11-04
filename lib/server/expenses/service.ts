@@ -19,6 +19,7 @@ import { expenseDateIssue, expenseDraftSchema, expenseIdSchema, updateExpenseSch
 import { restoreSchema } from "@/lib/domain/field-rules";
 import type { ExpenseFilters } from "@/lib/domain/expense-filters";
 import {
+  EXPENSE_TYPE_IDS,
   expenseKindOf,
   FIRST_EXPENSE_NUMBER,
   formatExpenseNumber,
@@ -144,6 +145,13 @@ export async function getPaidForFilterOptions(type: ExpenseType): Promise<Record
   const options: Record<string, string> = Object.fromEntries(records.map((r) => [r.id, isArchived(r) ? `${r.name} · Archived` : r.name]));
   if (list === "marketing") options[MARKETING_OTHER] = "Other";
   return options;
+}
+
+/** Those choices for every type with a list: the filter offers them before a picked type is applied. */
+export async function getPaidForFilterChoices(): Promise<Partial<Record<ExpenseType, Record<string, string>>>> {
+  const types = EXPENSE_TYPE_IDS.filter((type) => paidForListOf(type) !== null);
+  const choices = await Promise.all(types.map(getPaidForFilterOptions));
+  return Object.fromEntries(types.map((type, i) => [type, choices[i]]));
 }
 
 // ---------------------------------------------------------------------------

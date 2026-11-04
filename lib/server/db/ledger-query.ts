@@ -10,7 +10,8 @@ import type { BookingFilters } from "@/lib/domain/filters";
 import type { BookingStatus } from "@/lib/domain/types";
 import { DUE_SOON_DAYS } from "@/lib/domain/summary";
 import type { BookingDoc } from "./collections";
-import { destinationKeyOf, digitsOf, toDate, withinDays } from "./mapping";
+import { nameKeyOf } from "@/lib/domain/named-records";
+import { digitsOf, toDate, withinDays } from "./mapping";
 import { escapeRegex, searchAny } from "./search";
 
 const SEARCH_FIELDS = ["customerName", "invoiceNumber", "packageName", "destination", "batchName", "customerEmail"] as const;
@@ -26,39 +27,41 @@ const OWING = { bookingStatus: "Active", balanceAmount: { $gt: 0 } } as const;
 /** Cancelled, with money to give back. */
 const REFUNDING = { bookingStatus: "Cancelled", refundAmount: { $gt: 0 } } as const;
 
-/** Every booking but the archived ones. A list of values (not $ne), so the ledger index serves the sort. */
+/** Every booking but the archived ones: what the summary tiles read. */
 const NOT_ARCHIVED: { $in: BookingStatus[] } = { $in: ["Active", "Cancelled"] };
 
 /**
  * The index the page of rows must use, when the planner might pick wrong: with
  * a trip-date range or a booked date it could take that date's index and sort
- * in memory, so a newest-first one is named (with a person or a destination,
- * their own).
+ * in memory, so a newest-first one is named (with a person or a package, their own).
  */
 export const ledgerHint = (filters: BookingFilters): string | undefined => {
-  if (!filters.from && !filters.to && !filters.booked) return undefined;
+  if (!filters.tripFrom && !filters.tripTo && !filters.bookedFrom && !filters.bookedTo && !filters.due) return undefined;
   if (filters.closedBy) return "status_closedBy_createdAt_id";
-  return filters.destination ? "status_destination_createdAt_id" : "status_createdAt_id";
+  return filters.package ? "status_package_createdAt_id" : "status_createdAt_id";
 };
 
 /**
  * The ledger's filter. Search matches any of SEARCH_FIELDS (case-insensitive,
  * literally) or 3+ phone digits; the due filter keeps active bookings with a
- * balance, overdue or due within DUE_SOON_DAYS.
+ * balance, overdue or due within DUE_SOON_DAYS. The archived view shows every
+ * archived booking, as there's no trip status to choose (older ones may have been
+ * cancelled when archived); its due filter reads the balance alone.
  */
 export function ledgerMatch(filters: BookingFilters, today: string): Filter<BookingDoc> {
   const and: Filter<BookingDoc>[] = [];
 
-  // The archived view shows archived bookings only; otherwise they are hidden
-  and.push({ bookingStatus: filters.archived ? "Archived" : NOT_ARCHIVED });
-  if (filters.status) and.push({ bookingStatus: filters.status });
+  // One trip status at a time; the archived view shows archived bookings only
+  and.push({ bookingStatus: filters.archived ? "Archived" : filters.status });
   if (filters.payment === "Refund due") and.push({ ...REFUNDING, refundedOn: null });
   else if (filters.payment === "Refunded") and.push({ ...REFUNDING, refundedOn: { $ne: null } });
+  else if (filters.payment === "No refund") and.push({ bookingStatus: "Cancelled", refundAmount: { $not: { $gt: 0 } } });
   else if (filters.payment) and.push({ paymentStatus: filters.payment });
-  if (filters.destination) and.push({ destinationKey: destinationKeyOf(filters.destination) });
-  const tripStart = withinDays(filters);
+  if (filters.package) and.push({ packageKey: nameKeyOf(filters.package) });
+  const tripStart = withinDays({ from: filters.tripFrom, to: filters.tripTo });
   if (tripStart) and.push({ tripStartDate: tripStart });
-  if (filters.booked) and.push({ invoiceDate: toDate(filters.booked) });
+  const booked = withinDays({ from: filters.bookedFrom, to: filters.bookedTo });
+  if (booked) and.push({ invoiceDate: booked });
   if (filters.closedBy) and.push({ "closedBy.refId": filters.closedBy });
 
   if (filters.q) {
@@ -70,7 +73,7 @@ export function ledgerMatch(filters: BookingFilters, today: string): Filter<Book
 
   if (filters.due) {
     const { today: start, soonEnd } = dueWindow(today);
-    and.push({ ...OWING, dueDate: filters.due === "overdue" ? { $lte: start } : { $gt: start, $lte: soonEnd } });
+    and.push({ ...(filters.archived ? { balanceAmount: OWING.balanceAmount } : OWING), dueDate: filters.due === "overdue" ? { $lte: start } : { $gt: start, $lte: soonEnd } });
   }
 
   return and.length === 1 ? and[0] : { $and: and };
@@ -79,10 +82,13 @@ export function ledgerMatch(filters: BookingFilters, today: string): Filter<Book
 const isActive = { $eq: ["$bookingStatus", "Active"] };
 const isCancelled = { $eq: ["$bookingStatus", "Cancelled"] };
 
-/** Received on an active booking, or what a cancelled one keeps. Anything else is 0. */
-const COLLECTED = {
-  $cond: [isActive, "$amountPaid", { $cond: [isCancelled, { $subtract: ["$amountPaid", { $ifNull: ["$refundAmount", 0] }] }, 0] }],
-};
+/** What a cancelled booking keeps: received − refund. */
+const KEPT = { $subtract: ["$amountPaid", { $ifNull: ["$refundAmount", 0] }] };
+
+/** A field of an active booking, or what a cancelled one keeps. Anything else is 0. */
+const activeOrKept = (field: string) => ({ $cond: [isActive, field, { $cond: [isCancelled, KEPT, 0] }] });
+
+const COLLECTED = activeOrKept("$amountPaid");
 
 /** Sums for the summary tiles, over active bookings and the cancelled ones' money (due and overdue as in the due filter). */
 export function summaryGroup(today: string): Document[] {
@@ -110,7 +116,7 @@ export function summaryGroup(today: string): Document[] {
   ];
 }
 
-/** Count and totals of every matching booking (all of them, and the active ones). */
+/** Count and totals of every matching booking (all of them, and the active ones with what cancelled ones keep, so total = received + balance). */
 export const matchingGroup: Document[] = [
   {
     $group: {
@@ -120,9 +126,11 @@ export const matchingGroup: Document[] = [
       received: { $sum: "$amountPaid" },
       balance: { $sum: "$balanceAmount" },
       activeCount: { $sum: { $cond: [{ $eq: ["$bookingStatus", "Active"] }, 1, 0] } },
-      activeTotal: { $sum: { $cond: [{ $eq: ["$bookingStatus", "Active"] }, "$totalAmount", 0] } },
+      activeTotal: { $sum: activeOrKept("$totalAmount") },
       activeReceived: { $sum: COLLECTED },
       activeBalance: { $sum: { $cond: [{ $eq: ["$bookingStatus", "Active"] }, "$balanceAmount", 0] } },
+      refunded: { $sum: { $cond: [{ $ne: [{ $ifNull: ["$refundedOn", null] }, null] }, { $ifNull: ["$refundAmount", 0] }, 0] } },
+      refundTotal: { $sum: { $ifNull: ["$refundAmount", 0] } },
     },
   },
 ];

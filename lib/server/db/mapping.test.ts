@@ -31,9 +31,11 @@ const booking: Booking = {
   invoiceNote: "",
   internalNotes: "VIP",
   slotAmount: 0,
+  packageType: "Group",
   cancelledOn: null,
   refundAmount: 0,
   refundedOn: null,
+  refundedAt: null,
   closedBy: { refId: "11111111-1111-4111-8111-111111111111", label: "Ravi Kumar" },
 };
 

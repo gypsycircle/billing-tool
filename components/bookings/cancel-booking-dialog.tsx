@@ -32,7 +32,7 @@ export function CancelBookingDialog({ booking, open, onOpenChange }: { booking: 
       open={open}
       onOpenChange={onOpenChange}
       title={`Cancel booking No. ${booking.invoiceNumber}?`}
-      description={paid ? refundWorking(quote, booking) : "Nothing has been received on this booking, so there is nothing to refund."}
+      description={paid ? refundWorking(quote, booking) : "Nothing was received, so there's nothing to refund."}
       schema={schema}
       defaultValues={{ refundAmount: quote.amount }}
       target={{ mode: "edit", url: routes.api.bookings.one(booking.bookingId), version: booking.updatedAt }}
@@ -40,9 +40,9 @@ export function CancelBookingDialog({ booking, open, onOpenChange }: { booking: 
       unchangedCanSave
       submitLabel="Cancel booking"
       dismissLabel="Keep booking"
-      saved={`Booking No. ${booking.invoiceNumber} cancelled`}
+      saved={`Booking No. ${booking.invoiceNumber} cancelled.`}
     >
-      {paid && <NumberField name="refundAmount" label="Refund amount" hint="Worked out from the bill's terms. Change it if this case is different." required />}
+      {paid && <NumberField name="refundAmount" label="Refund amount" hint="From the bill's terms. You can change it." required />}
     </RecordDialog>
   );
 }

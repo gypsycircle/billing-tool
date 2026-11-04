@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dateRangeParams, expenseDatePresets, orderedRange, presetOf, tripDatePresets } from "./date-range";
+import { dateRangeParams, pastDatePresets, orderedRange, presetOf, tripDatePresets } from "./date-range";
 import { parseExpenseFilters } from "./expense-filters";
 import { parseBookingFilters } from "./filters";
 
@@ -19,8 +19,8 @@ describe("quick picks", () => {
     ]);
   });
 
-  it("offers spending so far for expenses", () => {
-    expect(ranges(expenseDatePresets(TODAY))).toEqual([
+  it("offers dates up to today for expenses and booked dates", () => {
+    expect(ranges(pastDatePresets(TODAY))).toEqual([
       "Today: 29/10/2026–29/10/2026",
       "Yesterday: 28/10/2026–28/10/2026",
       "Last 7 days: 23/10/2026–29/10/2026",
@@ -53,11 +53,14 @@ describe("the range in the URL", () => {
   });
 
   it("is read from YYYY-MM-DD by both lists, and written back the same way", () => {
-    const bookings = parseBookingFilters({ from: "2026-10-01", to: "2026-10-31" });
+    const bookings = parseExpenseFilters({ from: "2026-10-01", to: "2026-10-31" });
     expect([bookings.from, bookings.to]).toEqual(["01/10/2026", "31/10/2026"]);
     expect(dateRangeParams(bookings)).toEqual({ from: "2026-10-01", to: "2026-10-31" });
     const expenses = parseExpenseFilters({ from: "2026-02-30", to: ["2026-10-31", "2026-11-30"] });
     expect([expenses.from, expenses.to]).toEqual(["", "31/10/2026"]);
-    expect(parseBookingFilters({ from: "2026-11-01", to: "2026-10-01" })).toMatchObject({ from: "", to: "" });
+    expect(parseExpenseFilters({ from: "2026-11-01", to: "2026-10-01" })).toMatchObject({ from: "", to: "" });
+    // Bookings have two dates, each with its own names
+    expect(parseBookingFilters({ tripFrom: "2026-10-01", bookedTo: "2026-10-31" })).toMatchObject({ tripFrom: "01/10/2026", tripTo: "", bookedFrom: "", bookedTo: "31/10/2026" });
+    expect(parseBookingFilters({ tripFrom: "2026-11-01", tripTo: "2026-10-01" })).toMatchObject({ tripFrom: "", tripTo: "" });
   });
 });

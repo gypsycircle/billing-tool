@@ -57,22 +57,20 @@ export function RecordDialog<Values extends FieldValues>({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {/* Mounted only while open, so every opening starts from the record as it is now */}
-        {open && (
-          <DialogForm
-            schema={schema}
-            defaultValues={defaultValues}
-            target={target}
-            saved={saved}
-            editBody={editBody}
-            unchangedCanSave={unchangedCanSave}
-            submitLabel={submitLabel}
-            dismissLabel={dismissLabel}
-            onDone={() => onOpenChange(false)}
-          >
-            {children}
-          </DialogForm>
-        )}
+        {/* The dialog's contents go once it has faded out, so it keeps its shape while closing and every opening starts from the record as it is now */}
+        <DialogForm
+          schema={schema}
+          defaultValues={defaultValues}
+          target={target}
+          saved={saved}
+          editBody={editBody}
+          unchangedCanSave={unchangedCanSave}
+          submitLabel={submitLabel}
+          dismissLabel={dismissLabel}
+          onDone={() => onOpenChange(false)}
+        >
+          {children}
+        </DialogForm>
       </DialogContent>
     </Dialog>
   );
@@ -120,10 +118,11 @@ function DialogForm<Values extends FieldValues>({
       <form onSubmit={submit.onSubmit} noValidate className="space-y-4">
         {children}
         <DialogFooter>
-          <Button type="button" size="lg" variant="ghost" onClick={onDone} disabled={submit.pending}>
+          <Button type="button" size="lg" variant="ghost" onClick={onDone} disabled={submit.pending || submit.saved}>
             {dismissLabel}
           </Button>
-          <SubmitButton size="lg" label={submitLabel} pending={submit.pending} disabled={!(submit.canSubmit || (unchangedCanSave && !submit.pending && !submit.saved))} />
+          {/* Saved: still "Saving…" while the dialog fades out */}
+          <SubmitButton size="lg" label={submitLabel} pending={submit.pending || submit.saved} disabled={!(submit.canSubmit || (unchangedCanSave && !submit.pending && !submit.saved))} />
         </DialogFooter>
       </form>
     </FormProvider>

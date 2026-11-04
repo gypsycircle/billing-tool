@@ -4,6 +4,7 @@
 // spacing and capitals, then reordered and reworded, with the slot booking point added.
 // Edit here to change what every bill prints.
 
+import type { PackageType } from "@/lib/domain/types";
 import "server-only";
 
 export const COMPANY = {
@@ -22,7 +23,7 @@ export const BANK_DETAILS: readonly (readonly [label: string, value: string])[] 
 
 export const UPI_ID = "gypsycircle123@fbl";
 
-interface Term {
+export interface Term {
   /** Printed in semibold before the text, e.g. "Payment:". */
   lead: string;
   text: string;
@@ -77,3 +78,13 @@ export const TERMS: readonly Term[] = [
     text: "The company shall not be held responsible for delays, cancellations, natural calamities or unforeseen events.",
   },
 ];
+
+/**
+ * The terms a bill prints. A private package has no slot booking amount, so its
+ * second term says what limits a refund instead; a group package, and a bill
+ * saved before bookings had a type, print them as they are.
+ */
+export function termsFor(packageType: PackageType | null | undefined): readonly Term[] {
+  if (packageType !== "Private") return TERMS;
+  return TERMS.map((term, i) => (i === 1 ? { lead: "Refund limit:", text: "Private packages have no slot booking amount. The most we can refund is the amount paid." } : term));
+}

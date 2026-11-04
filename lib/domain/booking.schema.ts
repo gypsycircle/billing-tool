@@ -5,10 +5,11 @@
 // Bill of Supply is measured at save time by the booking service (lib/server/pdf).
 
 import { z } from "zod";
-import type { BookingDraft, BookingInput } from "./types";
+import { PACKAGE_TYPES, type BookingDraft, type BookingInput } from "./types";
 import { addDays, compareDDMMYYYY, isValidDDMMYYYY } from "./dates";
 import { crossFieldRule, ddmmyyyy, numberError, optionalText, phoneNumber, recordIdSchema, rupees, text } from "./field-rules";
 import { flag } from "./filters";
+import { ROUTE_OTHER } from "./general";
 
 // ---------------------------------------------------------------------------
 // Field rules (shared ones in field-rules.ts)
@@ -41,11 +42,12 @@ const bookingInputSchema = z.object({
   customerPhone: phoneNumber("Mobile number"),
   customerEmail: optionalEmail,
   packageName: text("Package name", 150),
+  packageType: z.enum(PACKAGE_TYPES, { error: "Choose the package type." }),
   destination: text("Destination", 100),
   batchName: text("Batch name", 100),
   tripStartDate: ddmmyyyy("Trip start date"),
   tripEndDate: ddmmyyyy("Trip end date"),
-  routeDescription: optionalText("Route description", 200),
+  routeDescription: text("Route", 200),
   travellers: z
     .number({ error: numberError("Travellers") })
     .int("Travellers must be a whole number.")
@@ -72,6 +74,13 @@ const amountsRule = crossFieldRule<BookingDraft>(["travellers", "ratePerPerson",
     ctx.addIssue({ code: "custom", path: ["amountPaid"], message: "Amount paid cannot exceed the total amount." });
   } else if (data.slotAmount > gross - data.discountAmount) {
     ctx.addIssue({ code: "custom", path: ["slotAmount"], message: "Slot amount cannot exceed the total amount." });
+  }
+});
+
+/** A private package never has a slot amount. */
+const privateSlotRule = crossFieldRule<Pick<BookingDraft, "packageType" | "slotAmount">>(["packageType", "slotAmount"], (data, ctx) => {
+  if (data.packageType === "Private" && data.slotAmount !== 0) {
+    ctx.addIssue({ code: "custom", path: ["slotAmount"], message: "A private package has no slot amount." });
   }
 });
 
@@ -112,40 +121,73 @@ function afterInvoiceIssue(date: string, invoiceDate: string, word: "start" | "e
 /** A complete booking (the stored record): every field, plus cross-field rules. */
 export const createBookingSchema = bookingInputSchema
   .superRefine(...amountsRule)
+  .superRefine(...privateSlotRule)
   .superRefine(...tripOrderRule)
   .superRefine(...dueDateRule);
 
-/**
- * A new booking is dated today or yesterday. Returns the message, or null when
- * the date is fine (or not a valid date yet).
- */
+/** The dates a new booking can have, newest first: today, yesterday, the day before. */
+export const invoiceDateChoices = (today: string): string[] => [today, addDays(today, -1), addDays(today, -2)];
+
+/** A new booking is dated one of those. Returns the message, or null when the date is fine (or not a valid date yet). */
 export function invoiceDateIssue(invoiceDate: string, today: string): string | null {
-  if (!isValidDDMMYYYY(invoiceDate) || invoiceDate === today || invoiceDate === addDays(today, -1)) return null;
-  return "Invoice date must be today or yesterday.";
+  if (!isValidDDMMYYYY(invoiceDate) || invoiceDateChoices(today).includes(invoiceDate)) return null;
+  return "Invoice date must be today, yesterday or the day before.";
 }
+
+/** The most a new or changed bill note can hold, so it stays readable with the seal under it on a cancelled bill. */
+export const BILL_NOTE_MAX_WORDS = 25;
+export const BILL_NOTE_MAX_LINES = 3;
+
+/** A note's words and printed lines: the lines typed, blank ones aside. */
+export function billNoteCounts(note: string): { words: number; lines: number } {
+  const text = note.trim();
+  return { words: text ? text.split(/\s+/).length : 0, lines: text.split(/\r?\n/).filter((line) => line.trim()).length };
+}
+
+function checkBillNote(note: string, ctx: z.RefinementCtx): void {
+  const { words, lines } = billNoteCounts(note);
+  if (words > BILL_NOTE_MAX_WORDS) ctx.addIssue({ code: "custom", path: ["invoiceNote"], message: `Keep the invoice note to ${BILL_NOTE_MAX_WORDS} words (it has ${words}).` });
+  else if (lines > BILL_NOTE_MAX_LINES) ctx.addIssue({ code: "custom", path: ["invoiceNote"], message: `Keep the invoice note to ${BILL_NOTE_MAX_LINES} lines (it has ${lines}).` });
+}
+
+/** "Other" on the Route dropdown needs the route typed in. */
+function routeOtherIssue(data: { routeDescription?: string; routeOther?: string }, ctx: z.RefinementCtx) {
+  if (data.routeDescription === ROUTE_OTHER && !data.routeOther) ctx.addIssue({ code: "custom", path: ["routeOther"], message: "Type the route." });
+}
+
+const routeOtherRule = crossFieldRule<{ routeDescription: string; routeOther: string }>(["routeDescription", "routeOther"], routeOtherIssue);
+
+const billNoteRule = crossFieldRule<Pick<BookingDraft, "invoiceNote">>(["invoiceNote"], (data, ctx) => checkBillNote(data.invoiceNote, ctx));
 
 const bookingEditableObject = bookingInputSchema
   .omit({ invoiceNumber: true, invoiceDate: true, dueDate: true })
-  .extend({ closedById: z.uuid("Choose who closed this booking.") });
+  .extend({
+    closedById: z.uuid("Choose who closed this booking."),
+    routeOther: optionalText("Route", 200),
+  });
 
 /**
  * Create: what the user enters, including the invoice date. The server assigns
  * the invoice number and due date (any sent are dropped), and validates the
  * full record afterwards.
  */
-export const bookingDraftSchema = bookingEditableObject
-  .extend({ invoiceDate: ddmmyyyy("Invoice date") })
+const draftWithoutNoteLimit = bookingEditableObject
+  .extend({ invoiceDate: ddmmyyyy("Invoice date"), routeOther: bookingEditableObject.shape.routeOther.default("") })
+  .superRefine(...routeOtherRule)
   .superRefine(...amountsRule)
+  .superRefine(...privateSlotRule)
   .superRefine(...tripOrderRule);
+
+export const bookingDraftSchema = draftWithoutNoteLimit.superRefine(...billNoteRule);
 
 type BookingFormDates = Pick<BookingInput, "invoiceDate" | "tripStartDate" | "tripEndDate">;
 
 /**
  * The booking form: the draft plus "trip starts and ends after the invoice
- * date". `saved` (edit) skips a rule while that stored date is unchanged;
+ * date". `saved` (edit) skips a rule while that stored value is unchanged (an older note can be over the limit);
  * `today` (create) adds the rule on the invoice date.
  */
-export function bookingFormSchema({ saved = {}, today }: { saved?: { tripStartDate?: string; tripEndDate?: string }; today?: string } = {}) {
+export function bookingFormSchema({ saved = {}, today }: { saved?: { tripStartDate?: string; tripEndDate?: string; invoiceNote?: string }; today?: string } = {}) {
   const afterInvoice = (field: "tripStartDate" | "tripEndDate", issue: typeof tripStartIssue) =>
     crossFieldRule<BookingFormDates>([field, "invoiceDate"], (data, ctx) => {
       if (data[field] === saved[field]) return;
@@ -156,7 +198,11 @@ export function bookingFormSchema({ saved = {}, today }: { saved?: { tripStartDa
     const message = today ? invoiceDateIssue(data.invoiceDate, today) : null;
     if (message) ctx.addIssue({ code: "custom", path: ["invoiceDate"], message });
   });
-  return bookingDraftSchema
+  const noteRule = crossFieldRule<Pick<BookingDraft, "invoiceNote">>(["invoiceNote"], (data, ctx) => {
+    if (data.invoiceNote !== saved.invoiceNote) checkBillNote(data.invoiceNote, ctx);
+  });
+  return draftWithoutNoteLimit
+    .superRefine(...noteRule)
     .superRefine(...invoiceDateRule)
     .superRefine(...afterInvoice("tripStartDate", tripStartIssue))
     .superRefine(...afterInvoice("tripEndDate", tripEndIssue));
@@ -170,7 +216,11 @@ export function bookingFormSchema({ saved = {}, today }: { saved?: { tripStartDa
 export const updateBookingSchema = bookingEditableObject
   .partial()
   .strict()
-  .refine((data) => Object.keys(data).length > 0, "No changes were provided.");
+  .refine((data) => Object.keys(data).length > 0, "No changes were provided.")
+  .superRefine((data, ctx) => {
+    if (data.invoiceNote !== undefined) checkBillNote(data.invoiceNote, ctx);
+    routeOtherIssue(data, ctx);
+  });
 
 /** GET /api/bookings/[id]/pdf's query: ?inline=1 opens the bill in the browser instead of downloading it. */
 export const parseBillQuery = (query: Record<string, string | string[] | undefined>) => ({ inline: flag.parse(query.inline) });
@@ -181,8 +231,8 @@ export const statusChangeSchema = z.union([
   z.object({ bookingStatus: z.literal("Cancelled"), refundAmount: rupees("Refund amount").optional() }).strict(),
 ]);
 
-/** A cancelled booking's refund: its amount, or the day it went back (null: not yet). */
+/** A cancelled booking's refund: its amount, or whether it has gone back (the server dates it). */
 export const refundChangeSchema = z.union([
   z.object({ refundAmount: rupees("Refund amount") }).strict(),
-  z.object({ refundedOn: ddmmyyyy("Refund date").nullable() }).strict(),
+  z.object({ refundPaid: z.boolean() }).strict(),
 ]);

@@ -13,6 +13,7 @@ export function NamedRowMenu({
   record,
   url,
   what,
+  things,
   archiveDescription,
   onEdit,
 }: {
@@ -21,6 +22,8 @@ export function NamedRowMenu({
   url: string;
   /** "team member", "destination". */
   what: string;
+  /** The list's name, as its Filters name it: "team members", "destinations". */
+  things: string;
   /** What archiving it means: which dropdown it leaves, and that it stays where it's used. */
   archiveDescription: string;
   onEdit: () => void;
@@ -30,7 +33,7 @@ export function NamedRowMenu({
       label={`${what} ${record.name}`}
       onEdit={onEdit}
       archived={isArchived(record)}
-      actions={useRecordActions({ url, version: record.updatedAt, title: record.name, findArchived: "Show archived" })}
+      actions={useRecordActions({ url, version: record.updatedAt, title: record.name, findArchived: things })}
       copy={{ recordLabel: what, reference: record.name, typeToConfirm: false, description: archiveDescription }}
     />
   );

@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { CARD } from "./layout-classes";
+import { CARD, CARD_STACK } from "./layout-classes";
 
 export interface LedgerColumn<Row> {
   /** Header text (an eyebrow label), or e.g. a screen-reader-only label. */
@@ -95,8 +95,6 @@ export function LedgerTable<Row>({
   );
 }
 
-const DENSE = "[&_td:not(:first-child):not(:last-child)]:px-1.5 [&_th:not(:first-child):not(:last-child)]:px-1.5";
-
 /** A list: the table on desktop, a card per row on small screens. */
 export function LedgerTableFrame<Row>({
   rows,
@@ -104,7 +102,6 @@ export function LedgerTableFrame<Row>({
   columns,
   muted,
   footer,
-  dense,
   card,
 }: {
   rows: readonly Row[];
@@ -114,19 +111,17 @@ export function LedgerTableFrame<Row>({
   muted?: (row: Row) => boolean;
   /** The totals row's cells (TableCell elements). */
   footer?: React.ReactNode;
-  /** Many columns: tighter gaps between them, so they all fit (the edges stay). */
-  dense?: boolean;
   /** A row as a card on small screens. */
   card: (row: Row) => React.ReactNode;
 }) {
   return (
     <>
-      <LedgerTable rows={rows} rowKey={rowKey} columns={columns} muted={muted} footer={footer} className={cn("hidden md:block", dense && DENSE)} />
+      <LedgerTable rows={rows} rowKey={rowKey} columns={columns} muted={muted} footer={footer} className="hidden md:block" />
 
       {/* Mobile */}
-      <ul className="space-y-3 md:hidden">
+      <ul className={cn(CARD_STACK, "md:hidden")}>
         {rows.map((row) => (
-          <li key={rowKey(row)} className={cn(CARD, "p-4", muted?.(row) && "opacity-75")}>
+          <li key={rowKey(row)} className={cn(CARD, CARD_STACK, "p-4", muted?.(row) && "opacity-75")}>
             {card(row)}
           </li>
         ))}
@@ -136,10 +131,10 @@ export function LedgerTableFrame<Row>({
 }
 
 /** The first cell of a totals row: "TOTALS 3 matching". */
-export function TotalsLabelCell({ colSpan, children }: { colSpan: number; children?: React.ReactNode }) {
+export function TotalsLabelCell({ colSpan, label = "Totals", children }: { colSpan: number; /** A row that isn't adding anything up says what it is instead ("Now"). */ label?: string; children?: React.ReactNode }) {
   return (
     <TableCell colSpan={colSpan} className="pl-5 text-muted-foreground">
-      <span className="eyebrow">Totals</span>
+      <span className="eyebrow">{label}</span>
       {children && <span className="ml-2 text-xs">{children}</span>}
     </TableCell>
   );
@@ -174,16 +169,18 @@ export function CardHeader({
 }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
+      <div className="min-w-0 space-y-2">
         {eyebrow && <p className="eyebrow text-muted-foreground">{eyebrow}</p>}
-        {href ? (
-          <Link href={href} className={cn("block truncate font-medium", eyebrow && "mt-2")}>
-            {title}
-          </Link>
-        ) : (
-          <p className="font-medium break-words">{title}</p>
-        )}
-        {lines}
+        <div>
+          {href ? (
+            <Link href={href} className="block truncate font-medium">
+              {title}
+            </Link>
+          ) : (
+            <p className="font-medium break-words">{title}</p>
+          )}
+          {lines}
+        </div>
       </div>
       {menu}
     </div>
@@ -207,7 +204,7 @@ export function CardFigures({
   className?: string;
 }) {
   return (
-    <dl className={cn("mt-3 grid gap-2 border-t pt-3 text-sm", FIGURE_COLUMNS[columns], className)}>
+    <dl className={cn("grid gap-2 border-t pt-3 text-sm", FIGURE_COLUMNS[columns], className)}>
       {items.map(({ label, value, strong }) => (
         <div key={label}>
           <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -221,7 +218,7 @@ export function CardFigures({
 /** A card's small labelled details (e.g. Pax · Payment · Trip). */
 export function CardMeta({ items }: { items: readonly { label: string; value: React.ReactNode }[] }) {
   return (
-    <dl className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+    <dl className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
       {items.map(({ label, value }) => (
         <div key={label} className="flex items-center gap-1.5">
           <dt className="shrink-0 whitespace-nowrap">{label}</dt>

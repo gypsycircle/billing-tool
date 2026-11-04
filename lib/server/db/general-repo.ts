@@ -16,5 +16,6 @@ export const generalRepo = namedRepo({
   fromDoc: fromGeneralItemDoc,
   // By name, like the dropdowns
   order: { nameKey: 1 },
+  searchFields: ["name"],
   duplicateName: (item) => new DuplicateNameError(GENERAL_KINDS[item.kind].one, item.name),
 });

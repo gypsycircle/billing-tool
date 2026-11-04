@@ -65,8 +65,8 @@ export function CommandMenu() {
 
       <CommandDialog
         open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
+        onOpenChange={setOpen}
+        onOpenChangeComplete={(next) => {
           if (!next) setSearch("");
         }}
         title="Command menu"

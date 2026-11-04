@@ -301,7 +301,7 @@ describe("where the money went (paid for)", () => {
     const { createExpense, getPaidForOptions } = await service();
     const { usersCollection } = await import("./collections");
     expect(await getPaidForOptions()).toEqual({
-      team: [{ id: LIST_IDS.member, name: "Ravi Kumar", detail: "Guide" }],
+      team: [{ id: LIST_IDS.member, name: "Ravi Kumar", detail: "Sales" }],
       package: [{ id: LIST_IDS.package, name: "Delhi - Agra Package" }],
       marketing: [{ id: LIST_IDS.marketing, name: "Meta Ads" }],
     });

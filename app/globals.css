@@ -49,8 +49,6 @@
   --color-status-neutral-soft: var(--status-neutral-soft);
   --color-tag-direct: var(--tag-direct);
   --color-tag-direct-soft: var(--tag-direct-soft);
-  --color-tag-indirect: var(--tag-indirect);
-  --color-tag-indirect-soft: var(--tag-indirect-soft);
 
   /* Type */
   --font-sans: var(--font-geist-sans);
@@ -112,8 +110,6 @@
   /* Categories, not states (an expense's kind): hues no status uses. Text ≥ 4.5:1 on its fill. */
   --tag-direct: oklch(0.45 0.15 280);           /* indigo */
   --tag-direct-soft: oklch(0.93 0.045 280);
-  --tag-indirect: oklch(0.47 0.16 345);         /* berry */
-  --tag-indirect-soft: oklch(0.94 0.04 345);
 
   /* Dashboard chart lines, one per figure (lib/domain/dashboard.ts). Checked
      with the dataviz palette validator against the card surface: every
@@ -174,8 +170,6 @@
   --status-neutral-soft: oklch(0.28 0.01 250);
   --tag-direct: oklch(0.82 0.1 280);
   --tag-direct-soft: oklch(0.31 0.07 280);
-  --tag-indirect: oklch(0.82 0.11 345);
-  --tag-indirect-soft: oklch(0.31 0.07 345);
 
   /* The same hues, stepped for the dark card (validated the same way) */
   --chart-sales: #b06ad6;

@@ -35,7 +35,7 @@ export function useBillPdf(booking: Pick<Booking, "bookingId" | "invoiceNumber">
     const file = await apiFetchFile(url);
     if ("blob" in file) {
       save(file.blob, file.fileName ?? "Bill-of-Supply.pdf");
-      toast.success(`Bill ${label} downloaded`, { id: toastId });
+      toast.success(`Bill ${label} downloaded.`, { id: toastId });
     } else if (file.status === 401) {
       toast.dismiss(toastId); // signing in again
     } else {

@@ -28,7 +28,7 @@ import {
 } from "@/lib/domain/expenses";
 import { GENERAL_KIND_IDS, type GeneralKind } from "@/lib/domain/general";
 import { ARCHIVABLE_STATUSES, type ArchivableStatus } from "@/lib/domain/records";
-import type { BookingStatus, ClosedBy, PaymentStatus } from "@/lib/domain/types";
+import { PACKAGE_TYPES, type BookingStatus, type ClosedBy, type PackageType, type PaymentStatus } from "@/lib/domain/types";
 import type { HistoryEvent } from "@/lib/domain/booking-history";
 import type { BillBooking } from "../pdf/content";
 import { getDb } from "./client";
@@ -49,8 +49,10 @@ export interface BookingDoc {
   customerEmail: string;
   packageName: string;
   destination: string;
-  /** Lowercased, trimmed destination, for the filter and the destination list. */
+  /** Lowercased, trimmed destination. No filter reads it now, but existing databases' validators require it. */
   destinationKey: string;
+  /** The package's name key, for the Package filter. Absent until scripts/backfill-package-keys.mjs has run. */
+  packageKey?: string;
   batchName: string;
   tripStartDate: Date;
   tripEndDate: Date;
@@ -68,12 +70,16 @@ export interface BookingDoc {
   invoiceNote: string;
   internalNotes: string;
   /** Non-refundable if cancelled. Absent on bookings saved before it existed (₹0). */
+  /** Absent on bookings saved before it existed, until their next edit. */
+  packageType?: PackageType;
   slotAmount?: number;
   /** The IST day it was cancelled (UTC midnight), and what goes back. Absent or null until then. */
   cancelledOn?: Date | null;
   refundAmount?: number;
   /** The IST day the refund went back; null while still due. */
   refundedOn?: Date | null;
+  /** The moment the refund was marked paid; absent or null on refunds marked before this was kept. */
+  refundedAt?: Date | null;
   /** Who closed it, and their name at the time. Absent on bookings saved before it existed. */
   closedBy?: ClosedBy;
   /** The Idempotency-Key the create request carried (unique when present). */
@@ -99,8 +105,8 @@ export interface PaymentDoc {
 }
 
 /**
- * One row of a booking's history: the bill as it stood when its people, total
- * or amount paid changed (domain form, never queried). Never changed afterwards.
+ * One row of a booking's history: the bill as it stood when it changed (domain
+ * form, never queried). Never changed afterwards.
  */
 export interface BookingHistoryDoc {
   _id: string;
@@ -110,6 +116,8 @@ export interface BookingHistoryDoc {
   bill: BillBooking;
   /** From before history was kept: not saved at the time, but rebuilt (scripts/backfill-history.mjs). */
   rebuilt?: true;
+  /** The slot amount as it stood. Absent on rows saved before it was kept. */
+  slotAmount?: number;
   /** A row that isn't an edit of the money, with the refund as it stood. */
   event?: HistoryEvent;
   refundAmount?: number;
@@ -194,6 +202,8 @@ const NAMES = {
 const string = { bsonType: "string" };
 // The driver stores whole numbers above 2^31 as doubles, so amounts accept all three
 const int = { bsonType: ["int", "long", "double"] };
+/** An amount entered in a form: never negative. */
+const money = { ...int, minimum: 0 };
 const date = { bsonType: "date" };
 
 /** Second line of defence behind the Zod schemas: shape, types and enums. */
@@ -222,26 +232,29 @@ const BOOKING_VALIDATOR: Document = {
       packageName: string,
       destination: string,
       destinationKey: string,
+      packageKey: string,
       batchName: string,
       tripStartDate: date,
       tripEndDate: date,
       routeDescription: string,
       travellers: int,
-      ratePerPerson: int,
+      ratePerPerson: money,
       grossAmount: int,
-      discountAmount: int,
+      discountAmount: money,
       discountPercentage: int,
       totalAmount: int,
-      amountPaid: int,
+      amountPaid: money,
       balanceAmount: int,
       paymentStatus: { enum: ["Unpaid", "Partial", "Paid"] },
       bookingStatus: { enum: ["Active", "Cancelled", "Archived"] },
       invoiceNote: string,
       internalNotes: string,
-      slotAmount: int,
+      slotAmount: money,
+      packageType: { enum: PACKAGE_TYPES },
       cancelledOn: { bsonType: ["date", "null"] },
-      refundAmount: int,
+      refundAmount: money,
       refundedOn: { bsonType: ["date", "null"] },
+      refundedAt: { bsonType: ["date", "null"] },
       closedBy: {
         bsonType: "object",
         required: ["refId", "label"],
@@ -293,6 +306,7 @@ const BOOKING_HISTORY_VALIDATOR: Document = {
         required: ["invoiceNumber", "travellers", "totalAmount", "amountPaid", "balanceAmount"],
       },
       rebuilt: { bsonType: "bool" },
+      slotAmount: int,
       event: string,
       refundAmount: int,
       refundPaid: { bsonType: "bool" },
@@ -394,8 +408,8 @@ async function setUp(): Promise<void> {
       // bookings. totalAmount is in the key, so the sums never read a document
       { key: { bookingStatus: 1, invoiceDate: 1, totalAmount: 1 }, name: "status_invoiceDate_total" },
       { key: { bookingStatus: 1, tripStartDate: 1, totalAmount: 1 }, name: "status_tripStart_total" },
-      // The destination filter
-      { key: { bookingStatus: 1, destinationKey: 1, createdAt: -1, _id: 1 }, name: "status_destination_createdAt_id" },
+      // The package filter
+      { key: { bookingStatus: 1, packageKey: 1, createdAt: -1, _id: 1 }, name: "status_package_createdAt_id" },
       idempotent,
     ]),
     db.collection<RateLimitDoc>(NAMES.rateLimits).createIndexes([

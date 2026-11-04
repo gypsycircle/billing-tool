@@ -27,6 +27,8 @@ export const COLORS = {
   hairline: hex("#d8d8d6"),
   /** Table rules, like the app's border-foreground/80. */
   strongRule: hex("#3d4350"),
+  /** The cancelled seal: a muted brick red that still prints clearly. */
+  seal: hex("#a4493a"),
 } as const;
 
 /** Tracked uppercase label (the app's `eyebrow`): 0.14em letter-spacing. */

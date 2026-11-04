@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingFilterParams, hasActiveFilters, parseBookingFilters } from "./filters";
+import { bookingFilterCount, paymentFilterOptions, bookingFilterParams, hasActiveFilters, parseBookingFilters } from "./filters";
 
 const none = parseBookingFilters({});
 
@@ -7,14 +7,15 @@ describe("parseBookingFilters", () => {
   it("drops unknown values and keeps valid ones", () => {
     expect(parseBookingFilters({ payment: "Paid", status: "Nope", archived: "1", q: ["  goa ", "x"] })).toEqual({
       q: "goa",
-      destination: "",
+      package: "",
       payment: "Paid",
-      status: undefined,
+      status: "Active",
       archived: true,
       due: undefined,
-      from: "",
-      to: "",
-      booked: "",
+      tripFrom: "",
+      tripTo: "",
+      bookedFrom: "",
+      bookedTo: "",
       closedBy: "",
       page: 1,
     });
@@ -30,19 +31,61 @@ describe("parseBookingFilters", () => {
   });
 
   it("keeps only the filters a view can use", () => {
-    // Archived bookings have their own view, not a trip status
-    expect(parseBookingFilters({ status: "Archived" }).status).toBeUndefined();
+    // Active unless Cancelled is asked for; archived bookings have their own view
+    expect(parseBookingFilters({}).status).toBe("Active");
+    expect(parseBookingFilters({ status: "Archived" }).status).toBe("Active");
     expect(parseBookingFilters({ status: "Cancelled" }).status).toBe("Cancelled");
-    // The archived view has no trip status or due date to narrow by
-    expect(parseBookingFilters({ archived: "1", status: "Active", due: "overdue", payment: "Paid" })).toMatchObject({ archived: true, status: undefined, due: undefined, payment: "Paid" });
+    // Only a cancelled booking has a refund, and only an active one has anything due
+    expect(parseBookingFilters({ payment: "Refunded" }).payment).toBeUndefined();
+    expect(parseBookingFilters({ status: "Cancelled", payment: "Refund due" }).payment).toBe("Refund due");
+    expect(parseBookingFilters({ status: "Cancelled", due: "overdue" }).due).toBeUndefined();
+    // Active is the default: not a filter, and not in links
+    expect(hasActiveFilters(parseBookingFilters({ status: "Active" }))).toBe(false);
+    expect(hasActiveFilters(parseBookingFilters({ status: "Cancelled" }))).toBe(true);
+    expect(bookingFilterParams(parseBookingFilters({ status: "Active" })).status).toBe("");
+    expect(bookingFilterParams(parseBookingFilters({ status: "Cancelled" })).status).toBe("Cancelled");
+    // The archived view narrows by them too
+    expect(parseBookingFilters({ archived: "1", due: "overdue", payment: "Paid" })).toMatchObject({ archived: true, status: "Active", due: "overdue", payment: "Paid" });
+  });
+
+  it("offers refunds in the cancelled list, payment statuses otherwise", () => {
+    expect(paymentFilterOptions("Cancelled")).toEqual(["Refund due", "Refunded", "No refund"]);
+    expect(paymentFilterOptions("Active")).toEqual(["Unpaid", "Partial", "Paid"]);
+    // A choice that isn't offered (an old link) is dropped
+    expect(parseBookingFilters({ status: "Cancelled", payment: "Partial" }).payment).toBeUndefined();
+    expect(parseBookingFilters({ status: "Cancelled", archived: "1", payment: "Refunded" }).payment).toBeUndefined();
+    expect(parseBookingFilters({ status: "Cancelled", archived: "1", payment: "Partial" }).payment).toBe("Partial");
   });
 
   it("reads the booked date, and ignores one that isn't a real date", () => {
-    expect(parseBookingFilters({ booked: "2026-02-01" }).booked).toBe("01/02/2026");
-    expect(parseBookingFilters({ booked: "2026-02-30" }).booked).toBe("");
-    expect(parseBookingFilters({ booked: "01/02/2026" }).booked).toBe("");
-    expect(bookingFilterParams(parseBookingFilters({ booked: "2026-02-01" })).booked).toBe("2026-02-01");
-    expect(bookingFilterParams(none).booked).toBe("");
+    expect(parseBookingFilters({ bookedFrom: "2026-02-01" }).bookedFrom).toBe("01/02/2026");
+    expect(parseBookingFilters({ bookedTo: "2026-02-30" }).bookedTo).toBe("");
+    expect(parseBookingFilters({ bookedFrom: "01/02/2026" }).bookedFrom).toBe("");
+    expect(bookingFilterParams(parseBookingFilters({ bookedFrom: "2026-02-01", bookedTo: "2026-02-03" }))).toMatchObject({ bookedFrom: "2026-02-01", bookedTo: "2026-02-03" });
+    expect(bookingFilterParams(none).bookedFrom).toBe("");
+    // A reversed range is dropped, each on its own; the old names are ignored
+    expect(parseBookingFilters({ bookedFrom: "2026-02-03", bookedTo: "2026-02-01", tripFrom: "2026-03-01" })).toMatchObject({ bookedFrom: "", bookedTo: "", tripFrom: "01/03/2026" });
+    expect(hasActiveFilters(parseBookingFilters({ from: "2026-02-01", to: "2026-02-03", booked: "2026-02-01" }))).toBe(false);
+  });
+
+  it("counts the filters applied", () => {
+    const count = (params: Record<string, string>) => bookingFilterCount(parseBookingFilters(params));
+    // The trip status always counts: Active is chosen by default
+    expect(count({})).toBe(1);
+    expect(count({ status: "Cancelled" })).toBe(1);
+    // A search isn't a filter
+    expect(count({ q: "asha" })).toBe(1);
+    // A range's two ends are one
+    expect(count({ tripFrom: "2026-02-01", tripTo: "2026-02-28" })).toBe(2);
+    expect(count({ tripTo: "2026-02-28" })).toBe(2);
+    // The archived view has no trip status, so an old link's is ignored and not counted
+    expect(parseBookingFilters({ status: "Cancelled", archived: "1" }).status).toBe("Active");
+    expect(count({ archived: "1" })).toBe(1);
+    expect(count({ package: "Goa", payment: "Paid", status: "Cancelled", archived: "1", bookedFrom: "2026-02-01", tripFrom: "2026-02-01" })).toBe(5);
+    expect(count({ package: "Goa", status: "Cancelled", bookedFrom: "2026-02-01", bookedTo: "2026-02-03", tripFrom: "2026-02-01" })).toBe(4);
+    // What the server ignores isn't counted
+    expect(count({ payment: "Refunded", due: "nonsense", closedBy: "nobody" })).toBe(1);
+    expect(count({ status: "Cancelled", due: "overdue" })).toBe(1);
   });
 
   it("caps search length", () => {
@@ -53,7 +96,7 @@ describe("parseBookingFilters", () => {
     expect(hasActiveFilters(none)).toBe(false);
     expect(hasActiveFilters(parseBookingFilters({ q: "x" }))).toBe(true);
     expect(hasActiveFilters(parseBookingFilters({ due: "week" }))).toBe(true);
-    expect(hasActiveFilters(parseBookingFilters({ booked: "2026-02-01" }))).toBe(true);
+    expect(hasActiveFilters(parseBookingFilters({ bookedFrom: "2026-02-01" }))).toBe(true);
     expect(hasActiveFilters(parseBookingFilters({ page: "2" }))).toBe(false);
   });
 });

@@ -23,9 +23,9 @@ export function namedService<Rec extends NamedRecord>(options: {
   repo: NamedRepo<Rec>;
   idSchema: z.ZodType;
   /** A new record from the request body (validated), without its ID, status or timestamps. */
-  draftOf: (input: unknown) => Omit<Rec, keyof NamedRecord> & Pick<NamedRecord, "name">;
+  draftOf: (input: unknown) => Promise<Omit<Rec, keyof NamedRecord> & Pick<NamedRecord, "name">> | (Omit<Rec, keyof NamedRecord> & Pick<NamedRecord, "name">);
   /** The record after an edit (validated), from the stored one and the request body. */
-  edited: (current: Rec, input: unknown) => Rec;
+  edited: (current: Rec, input: unknown) => Promise<Rec> | Rec;
 }) {
   const { record, repo, idSchema, draftOf, edited } = options;
   const assertId = (id: string) => assertRecordId(record, idSchema, id);
@@ -49,7 +49,7 @@ export function namedService<Rec extends NamedRecord>(options: {
     assertCurrentVersion(record, current.updatedAt, expectedUpdatedAt);
     if (isArchived(current)) throw new ArchivedRecordError(record);
 
-    const updated = { ...edited(current, input), updatedAt: nextTimestamp(current.updatedAt) };
+    const updated = { ...(await edited(current, input)), updatedAt: nextTimestamp(current.updatedAt) };
     return (await repo.updateIfVersion(updated, expectedUpdatedAt)) ? updated : notWritten(record, versionOf(id));
   }
 
@@ -65,7 +65,7 @@ export function namedService<Rec extends NamedRecord>(options: {
     /** Creates a record; a repeat with the same idempotency key returns the first. A name in use is 409. */
     async create(input: unknown, idempotencyKey?: string): Promise<Rec> {
       await verifySession();
-      const draft = draftOf(input);
+      const draft = await draftOf(input);
       return oneCreatePerKey(idempotencyKey, async () => {
         const earlier = idempotencyKey ? await repo.findByIdempotencyKey(idempotencyKey) : null;
         if (earlier) return earlier;

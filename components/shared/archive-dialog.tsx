@@ -6,38 +6,13 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, Loader2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Archive } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "./confirm-dialog";
 
 /** What the confirmation says about one record (the menus add the open state, pending and the action). */
 export type ArchiveCopy = Pick<ArchiveDialogProps, "recordLabel" | "reference" | "typeToConfirm" | "description">;
-
-/**
- * The confirmation for a numbered record (booking, expense): typed to confirm,
- * its own lead sentence, then the same promise for every record.
- */
-export function numberedArchiveCopy(recordLabel: string, reference: string, lead: React.ReactNode): ArchiveCopy {
-  return {
-    recordLabel,
-    reference,
-    description: (
-      <>
-        {lead} Nothing is deleted — you can restore it from <span className="font-medium">Show archived</span>.
-      </>
-    ),
-  };
-}
 
 interface ArchiveDialogProps {
   open: boolean;
@@ -48,7 +23,7 @@ interface ArchiveDialogProps {
   reference: string;
   /** Ask for the number to be typed (default). Off for records named, not numbered. */
   typeToConfirm?: boolean;
-  /** What archiving does to this record, in a sentence or two. */
+  /** What archiving does to this record, in one short sentence. Where to restore it from is added after it. */
   description: React.ReactNode;
   pending: boolean;
   onConfirm: () => Promise<unknown>;
@@ -59,52 +34,43 @@ export function ArchiveDialog({ open, onOpenChange, recordLabel, reference, type
   const matches = !typeToConfirm || typed.trim() === reference;
 
   return (
-    <AlertDialog
+    <ConfirmDialog
       open={open}
-      onOpenChange={(next) => {
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(next) => {
         if (!next) setTyped("");
-        onOpenChange(next);
       }}
+      title={typeToConfirm ? `Archive ${recordLabel} No. ${reference}?` : `Archive ${recordLabel} “${reference}”?`}
+      description={
+        <>
+          {description} You can restore {recordLabel === "team member" ? "them" : "it"} from Filters.
+        </>
+      }
+      confirmLabel="Archive"
+      dismissLabel={`Keep ${recordLabel}`}
+      icon={<Archive />}
+      destructive
+      disabled={!matches}
+      pending={pending}
+      onConfirm={onConfirm}
     >
-      <AlertDialogContent className="sm:max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            {typeToConfirm ? `Archive ${recordLabel} No. ${reference}?` : `Archive ${recordLabel} “${reference}”?`}
-          </AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-
-        {typeToConfirm && (
-          <div className="space-y-1.5">
-            <Label htmlFor="archive-confirm" className="text-[0.8125rem]">
+      {typeToConfirm && (
+        <div className="space-y-1.5">
+          <Label htmlFor="archive-confirm" className="text-[0.8125rem]">
+            {/* One piece: the label spaces its children apart */}
+            <span>
               Type <span className="font-semibold tabular">{reference}</span> to confirm
-            </Label>
-            <Input
-              id="archive-confirm"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              autoComplete="off"
-              className="h-10 tabular"
-            />
-          </div>
-        )}
-
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Keep {recordLabel}</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            disabled={!matches || pending}
-            onClick={async () => {
-              await onConfirm();
-              onOpenChange(false);
-              setTyped("");
-            }}
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <Archive />}
-            Archive
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+            </span>
+          </Label>
+          <Input
+            id="archive-confirm"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoComplete="off"
+            className="h-10 tabular"
+          />
+        </div>
+      )}
+    </ConfirmDialog>
   );
 }

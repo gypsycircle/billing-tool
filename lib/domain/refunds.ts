@@ -1,13 +1,14 @@
 // lib/domain/refunds.ts
 // What a cancelled booking gives back, from the bill's terms (lib/server/pdf/company.ts):
 // a percentage of the package amount by days before the trip, limited to what was
-// received less the non-refundable slot amount. Staff can change the suggested amount.
+// received less the non-refundable slot amount (a private package has none, so
+// all of it). Staff can change the suggested amount.
 
 import { formatAmount } from "./money";
 import { parseDDMMYYYY } from "./dates";
-import type { Booking } from "./types";
+import type { Booking, PaymentStatus } from "./types";
 
-export const REFUND_STATUSES = ["Refund due", "Refunded"] as const;
+export const REFUND_STATUSES = ["Refund due", "Refunded", "No refund"] as const;
 export type RefundStatus = (typeof REFUND_STATUSES)[number];
 
 const DAY_MS = 86_400_000;
@@ -23,14 +24,14 @@ export function refundPercent(days: number): number {
   return 0;
 }
 
-export type RefundFigures = Pick<Booking, "totalAmount" | "amountPaid" | "slotAmount" | "tripStartDate">;
+export type RefundFigures = Pick<Booking, "totalAmount" | "amountPaid" | "slotAmount" | "tripStartDate" | "packageType">;
 
 export interface RefundQuote {
   days: number;
   percent: number;
   /** The percentage of the package amount. */
   byTerms: number;
-  /** The most that can go back: received − slot amount. */
+  /** The most that can go back: received − slot amount (₹0 on a private package). */
   limit: number;
   /** The smaller of the two, in whole rupees. */
   amount: number;
@@ -45,18 +46,42 @@ export function refundQuote({ totalAmount, amountPaid, slotAmount, tripStartDate
 }
 
 /** The working, in words, shown when cancelling. */
-export function refundWorking({ days, percent, byTerms, limit }: RefundQuote, { totalAmount, amountPaid, slotAmount }: RefundFigures): string {
-  const when = days < 0 ? "The trip has already started" : days === 0 ? "The trip starts today" : `The trip starts in ${days === 1 ? "1 day" : `${days} days`}`;
-  const terms = percent === 0 ? "no refund under the terms" : `${percent}% of ₹${formatAmount(totalAmount)} = ₹${formatAmount(byTerms)}`;
-  return `${when}: ${terms}. The most that can go back: ₹${formatAmount(amountPaid)} received − ₹${formatAmount(slotAmount)} slot = ₹${formatAmount(limit)}.`;
+export function refundWorking({ days, percent, byTerms, limit }: RefundQuote, { totalAmount, slotAmount }: RefundFigures): string {
+  const when = days < 0 ? "The trip has started" : days === 0 ? "The trip starts today" : `The trip starts in ${days === 1 ? "1 day" : `${days} days`}`;
+  if (percent === 0) return `${when}: no refund under the terms.`;
+  const terms = `${when}: ${percent}% of ₹${formatAmount(totalAmount)} = ₹${formatAmount(byTerms)}.`;
+  // Said only when it's what decides the amount
+  if (limit >= byTerms) return terms;
+  return `${terms} At most ₹${formatAmount(limit)} can go back${slotAmount > 0 ? ` (₹${formatAmount(slotAmount)} slot kept)` : ""}.`;
 }
 
 type RefundState = Pick<Booking, "bookingStatus" | "refundAmount" | "refundedOn">;
 
-/** A cancelled booking's refund, if it has one. */
+/** Where a cancelled booking's refund stands (null for any other booking). */
 export function refundStatusOf({ bookingStatus, refundAmount, refundedOn }: RefundState): RefundStatus | null {
-  if (bookingStatus !== "Cancelled" || !(refundAmount > 0)) return null;
+  if (bookingStatus !== "Cancelled") return null;
+  if (!(refundAmount > 0)) return "No refund";
   return refundedOn ? "Refunded" : "Refund due";
+}
+
+/** The money badge: a cancelled booking's refund status, or the stored payment status (Refunded on a booking archived after its refund went back). The stored status never changes for this. */
+export const paymentBadgeOf = (booking: RefundState & Pick<Booking, "paymentStatus">): PaymentStatus | RefundStatus =>
+  refundStatusOf(booking) ?? (booking.refundedOn ? "Refunded" : booking.paymentStatus);
+
+/** What a cancelled booking's bill prints about it. */
+export interface BillCancellation {
+  /** DD/MM/YYYY; null on bookings cancelled before the date was kept. */
+  cancelledOn: string | null;
+  refundAmount: number;
+  refundedOn: string | null;
+}
+
+type CancellationState = Pick<Booking, "bookingStatus"> & Partial<Pick<Booking, "cancelledOn" | "refundAmount" | "refundedOn">>;
+
+/** The cancellation a booking's bill shows, or null when it isn't cancelled (an archived one goes by its cancelled date). */
+export function cancellationOf({ bookingStatus, cancelledOn, refundAmount, refundedOn }: CancellationState): BillCancellation | null {
+  if (bookingStatus !== "Cancelled" && !cancelledOn) return null;
+  return { cancelledOn: cancelledOn ?? null, refundAmount: refundAmount ?? 0, refundedOn: refundedOn ?? null };
 }
 
 /** The money a cancelled booking keeps: received − refund, paid yet or not. */

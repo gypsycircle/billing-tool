@@ -3,6 +3,7 @@
 // with what it's for, its main action, then its content. `id` is where links land.
 
 import { cn } from "@/lib/utils";
+import { SECTION_STACK } from "./layout-classes";
 import { HeaderActions } from "./page-header";
 
 export function TitledSection({
@@ -10,18 +11,16 @@ export function TitledSection({
   title,
   description,
   action,
-  className,
   children,
 }: {
   id: string;
   title: string;
   description: string;
   action?: React.ReactNode;
-  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className={cn("scroll-mt-24 space-y-4", className)}>
+    <section id={id} aria-labelledby={`${id}-heading`} className={cn("scroll-mt-24", SECTION_STACK)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0 space-y-1">
           <h2 id={`${id}-heading`} className="font-heading text-2xl font-medium">

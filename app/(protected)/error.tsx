@@ -1,6 +1,7 @@
 // app/(protected)/error.tsx
 // Errors inside the signed-in app keep the header and navigation, so the user
-// can retry or move elsewhere. Only the digest is logged — never details.
+// can retry or move elsewhere. Only the digest is logged — never details,
+// except in development, where the error itself is what's needed to fix it.
 
 "use client";
 
@@ -19,7 +20,7 @@ export default function ProtectedError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[ErrorBoundary]", error.digest ?? "no digest");
+    console.error("[ErrorBoundary]", process.env.NODE_ENV === "development" ? error : (error.digest ?? "no digest"));
   }, [error]);
 
   return (

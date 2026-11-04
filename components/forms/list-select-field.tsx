@@ -2,7 +2,7 @@
 // A dropdown fed by a Settings list (the booking's package, destination and
 // route; an expense's team member, package or channel), with a hint that
 // links to that list for what isn't in it. An empty list is disabled and says
-// to add some first; an optional field can be cleared ("No route").
+// to add some first.
 
 "use client";
 
@@ -23,7 +23,6 @@ export function ListSelectField<T extends FieldValues>({
   things,
   note,
   alternative,
-  optional,
   required,
   className,
 }: {
@@ -41,14 +40,11 @@ export function ListSelectField<T extends FieldValues>({
   note?: string;
   /** Another way out, before "add it in Settings": "Pick Other". */
   alternative?: string;
-  /** Can be left empty: its first choice clears it ("No route"). */
-  optional?: boolean;
   /** The save refuses it empty: the label gets a red mark. */
   required?: boolean;
   className?: string;
 }) {
   const empty = Object.keys(choices).length === 0;
-  const none = `No ${label.toLowerCase()}`;
   const link = (
     <Link href={settingsHref(list)} className="font-medium text-foreground underline underline-offset-4">
       Settings
@@ -59,8 +55,7 @@ export function ListSelectField<T extends FieldValues>({
       name={name}
       label={label}
       options={choices}
-      placeholder={empty ? `No ${things} yet` : optional ? none : (placeholder ?? `Choose the ${label.toLowerCase()}…`)}
-      emptyLabel={optional && !empty ? none : undefined}
+      placeholder={empty ? `No ${things} yet` : (placeholder ?? `Choose the ${label.toLowerCase()}…`)}
       disabled={empty}
       required={required}
       className={className}
@@ -71,7 +66,7 @@ export function ListSelectField<T extends FieldValues>({
             <>Add {things} in {link} first.</>
           ) : (
             <>
-              Not listed? {alternative ? `${alternative}, or add` : "Add"} it in {link}.
+              Not listed? {alternative ? `${alternative}, or add` : "Add"} {list === "team" ? "them" : "it"} in {link}.
             </>
           )}
         </>

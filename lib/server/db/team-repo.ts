@@ -3,10 +3,16 @@
 
 import "server-only";
 
+import type { Filter } from "mongodb";
 import { DuplicateNameError } from "../errors";
 import { usersCollection } from "./collections";
 import { fromTeamMemberDoc, toTeamMemberDoc } from "./mapping";
 import { namedRepo } from "./named-repo";
+import type { NamedDoc } from "./collections";
+import { escapeRegex } from "./search";
+
+/** The team members with one role, in any capitalisation. */
+export const roleScope = (role: string): Filter<NamedDoc> => ({ role: new RegExp(`^${escapeRegex(role)}$`, "i") }) as Filter<NamedDoc>;
 
 export const teamRepo = namedRepo({
   collection: usersCollection,

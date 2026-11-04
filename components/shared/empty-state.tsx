@@ -16,18 +16,20 @@ export function EmptyState({ icon: Icon, title, description, action, className }
   return (
     <section
       className={cn(
-        "ledger-lines rounded-xl border border-dashed border-rule bg-card px-6 py-16 text-center",
+        "ledger-lines space-y-7 rounded-xl border border-dashed border-rule bg-card px-6 py-16 text-center",
         className
       )}
     >
-      <div className="mx-auto flex size-12 items-center justify-center rounded-full border border-rule bg-background text-brand">
-        <Icon className="size-5" strokeWidth={1.75} aria-hidden />
+      <div className="space-y-5">
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full border border-rule bg-background text-brand">
+          <Icon className="size-5" strokeWidth={1.75} aria-hidden />
+        </div>
+        <div className="space-y-2">
+          <h2 className="font-heading text-xl font-medium">{title}</h2>
+          {description && <p className="mx-auto max-w-md text-sm text-pretty text-muted-foreground">{description}</p>}
+        </div>
       </div>
-      <h2 className="mt-5 font-heading text-xl font-medium">{title}</h2>
-      {description && (
-        <p className="mx-auto mt-2 max-w-md text-sm text-pretty text-muted-foreground">{description}</p>
-      )}
-      {action && <div className="mt-7 flex flex-wrap justify-center gap-2">{action}</div>}
+      {action && <div className="flex flex-wrap justify-center gap-2">{action}</div>}
     </section>
   );
 }

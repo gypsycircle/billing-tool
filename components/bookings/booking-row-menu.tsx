@@ -29,6 +29,7 @@ export function BookingRowMenu({ booking }: { booking: BookingActionTarget }) {
         href={routes.bookings.page(booking.bookingId)}
         editHref={routes.bookings.edit(booking.bookingId)}
         archived={archived}
+        canArchive={booking.bookingStatus === "Active"}
         actions={actions}
         copy={bookingArchiveCopy(booking)}
         openItems={

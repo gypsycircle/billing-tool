@@ -4,9 +4,10 @@
 // caller picks a colour. Each value's look is decided once, in BADGES:
 //   Paid / Partial / Unpaid   green / ochre / red: done, in progress, owed
 //   Active                    teal wash (accent): live
-//   Cancelled                 slate fill: the trip is off, the record is kept
+//   Cancelled                 muted grey fill: the trip is off, the record is kept
 //   Archived                  slate outline, no fill: put away (shape, not only colour, sets it apart)
-//   Direct / Indirect         indigo / berry: categories, in hues no status uses
+//   Spent                     green, like Paid: an expense that isn't archived
+//   Direct / Indirect         indigo, both: categories, in a hue no status uses
 // The dot and the label carry the meaning too, never the colour alone.
 
 import type { ExpenseKind } from "@/lib/domain/expenses";
@@ -16,7 +17,7 @@ import type { RefundStatus } from "@/lib/domain/refunds";
 import type { BookingStatus, PaymentStatus } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
 
-export type BadgeValue = PaymentStatus | BookingStatus | ArchivableStatus | ExpenseKind | RefundStatus;
+export type BadgeValue = PaymentStatus | BookingStatus | ArchivableStatus | ExpenseKind | RefundStatus | "Spent";
 
 /** Every value's look. Typed from the domain's lists: a new status without one fails the type check. */
 const BADGES: Record<BadgeValue, string> = {
@@ -26,11 +27,13 @@ const BADGES: Record<BadgeValue, string> = {
   // Money still owed is red and settled is green, whichever way it's owed
   "Refund due": "bg-status-unpaid-soft text-status-unpaid",
   Refunded: "bg-status-paid-soft text-status-paid",
+  Spent: "bg-status-paid-soft text-status-paid",
+  "No refund": "bg-muted text-muted-foreground",
   Active: "bg-accent text-accent-foreground",
-  Cancelled: "bg-status-neutral-soft text-status-neutral",
+  Cancelled: "bg-muted text-muted-foreground",
   Archived: "border-dashed border-status-neutral/60 text-status-neutral",
   direct: "bg-tag-direct-soft text-tag-direct",
-  indirect: "bg-tag-indirect-soft text-tag-indirect",
+  indirect: "bg-tag-direct-soft text-tag-direct",
 };
 
 /** The text shown: a status as it is, a kind by its name ("direct" → "Direct"). */

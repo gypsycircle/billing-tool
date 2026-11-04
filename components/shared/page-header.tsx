@@ -24,21 +24,23 @@ export function HeaderActions({ children }: { children: React.ReactNode }) {
 export function PageHeader({ title, eyebrow, description, actions, back, className }: PageHeaderProps) {
   return (
     <header className={cn(PAGE_HEADER, className)}>
-      <div className="min-w-0 space-y-2">
+      <div className="min-w-0 space-y-3">
         {back && (
           <Link
             href={back.href}
-            className="group mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="group flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-0.5" />
             {back.label}
           </Link>
         )}
-        {eyebrow && <p className="eyebrow text-brand">{eyebrow}</p>}
-        <h1 className="font-heading text-3xl font-medium tracking-tight text-balance sm:text-[2.5rem] sm:leading-[1.1]">
-          {title}
-        </h1>
-        {description && <p className="max-w-prose text-pretty text-muted-foreground">{description}</p>}
+        <div className="space-y-2">
+          {eyebrow && <p className="eyebrow text-brand">{eyebrow}</p>}
+          <h1 className="font-heading text-3xl font-medium tracking-tight text-balance sm:text-[2.5rem] sm:leading-[1.1]">
+            {title}
+          </h1>
+          {description && <p className="max-w-prose text-pretty text-muted-foreground">{description}</p>}
+        </div>
       </div>
       {actions && <HeaderActions>{actions}</HeaderActions>}
     </header>

@@ -1,25 +1,34 @@
 // components/shared/filter-toolbar.tsx
-// The pieces of a list's filter toolbar (bookings, expenses, Settings): a debounced
-// search box, filter selects, a date range, one day, the "Show archived" toggle and
-// Reset. Values live in the URL (useUrlFilters) and are applied on the server.
+// The pieces of a list's filters: a debounced search box; the labelled fields a
+// FilterDialog holds: selects, a date range, archived only.
+// Values live in the URL (useUrlFilters) and are applied on the server.
 
 "use client";
 
-import { useEffect, useState } from "react";
-import { Archive, Loader2, Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { use, useEffect, useState } from "react";
+import { Loader2, Search, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { presetOf, type DatePreset } from "@/lib/domain/date-range";
 import { fromISODate, toISODate } from "@/lib/domain/dates";
-import { DatePicker } from "./date-picker";
-import { DateRangePicker } from "./date-range-picker";
+import { DateRangePicker, rangeTriggerLabel } from "./date-range-picker";
+import { FilterDialogElement } from "./filter-dialog";
 import { OptionSelect } from "./option-select";
 import { cn } from "@/lib/utils";
 
 const ALL = "all";
 
-/** Every filter control takes an equal share of its row. */
-const FILTER_WIDTH = "w-full min-w-40 flex-1 basis-40";
+/** A filter's visible name over its control (the control carries the same name for screen readers). */
+function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground" aria-hidden>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
 
 /** Full-width search; sends the text after a pause, not on every key. */
 export function FilterSearch({
@@ -75,8 +84,10 @@ export function FilterSearch({
   );
 }
 
-/** One filter. `options`: values shown as is, or { value: label }. "" means all. */
-export function FilterSelect({
+type FilterOptions = readonly string[] | Readonly<Record<string, string>>;
+
+/** The dropdown alone. `options`: values shown as is, or { value: label }. "" means all; with no `allLabel` one option is always chosen. */
+function FilterDropdown({
   label,
   allLabel,
   options,
@@ -84,8 +95,8 @@ export function FilterSelect({
   onChange,
 }: {
   label: string;
-  allLabel: string;
-  options: readonly string[] | Readonly<Record<string, string>>;
+  allLabel?: string;
+  options: FilterOptions;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -95,11 +106,20 @@ export function FilterSelect({
   return (
     <OptionSelect
       label={label}
-      options={{ [ALL]: allLabel, ...labels }}
-      value={value || ALL}
+      options={allLabel ? { [ALL]: allLabel, ...labels } : labels}
+      value={value || (allLabel ? ALL : "")}
       onChange={(next) => onChange(next === ALL ? "" : next)}
-      className={cn(FILTER_WIDTH, value && "border-brand/50 text-foreground")}
+      className={cn("w-full min-w-0 flex-1", value && "border-brand/50 text-foreground")}
     />
+  );
+}
+
+/** One filter: its label over its dropdown. */
+export function FilterSelect(props: React.ComponentProps<typeof FilterDropdown>) {
+  return (
+    <FilterField label={props.label}>
+      <FilterDropdown {...props} />
+    </FilterField>
   );
 }
 
@@ -107,9 +127,10 @@ const CUSTOM = "custom";
 
 /**
  * A date-range filter (?from=&to=, YYYY-MM-DD), like the dashboard's period:
- * a dropdown of quick picks ending in "Custom range", which shows a calendar
- * (DateRangePicker) beside it. A range that is exactly a quick pick shows as
- * that pick; any other as Custom range. The first option clears it.
+ * a dropdown of quick picks ending in "Custom range". Choosing that opens the
+ * calendar (DateRangePicker) over the modal, and an icon beside the dropdown
+ * opens it again, so the field never changes height. A range that is exactly a
+ * quick pick shows as that pick; any other shows its dates. The first option clears it.
  */
 export function FilterDateRange({
   label,
@@ -146,128 +167,48 @@ export function FilterDateRange({
     if (!set || picked) setCustomChosen(false);
   }
   const custom = customChosen || (set && !picked);
+  const modal = use(FilterDialogElement);
 
   return (
-    <>
-      {custom && (
-        <DateRangePicker label={label} placeholder="Pick the dates" from={range.from} to={range.to} latest={latest} onChange={onChange} className={FILTER_WIDTH} />
-      )}
-      <FilterSelect
-        label={label}
-        allLabel={allLabel}
-        options={{ ...Object.fromEntries(presets.map((p) => [p.id, p.label])), [CUSTOM]: "Custom range" }}
-        value={custom ? CUSTOM : (picked?.id ?? "")}
-        onChange={(next) => {
-          if (next === CUSTOM) return setCustomChosen(true);
-          setCustomChosen(false);
-          const preset = presets.find((p) => p.id === next);
-          onChange(preset ? toISODate(preset.from) : "", preset ? toISODate(preset.to) : "");
-        }}
-      />
-    </>
-  );
-}
-
-/**
- * A one-day filter (YYYY-MM-DD in the URL): the calendar itself, sized like the
- * filters beside it. While a day is set, its × clears this filter alone.
- */
-export function FilterDate({
-  label,
-  placeholder,
-  value,
-  max,
-  onChange,
-}: {
-  label: string;
-  /** Shown with no day picked ("Any booked date"). */
-  placeholder: string;
-  /** The day in the URL (YYYY-MM-DD; "" for none). */
-  value: string;
-  /** The last day that can be picked (DD/MM/YYYY). */
-  max?: string;
-  /** The new day, YYYY-MM-DD ("" clears it). */
-  onChange: (value: string) => void;
-}) {
-  const day = fromISODate(value);
-
-  return (
-    <div className={cn("relative", FILTER_WIDTH)}>
-      <DatePicker
-        label={label}
-        placeholder={placeholder}
-        value={day}
-        max={max}
-        onChange={(next) => onChange(toISODate(next))}
-        className={cn("h-9 text-sm [&>span]:text-foreground", day && "border-brand/50 pr-9")}
-      />
-      {day && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`Clear ${label.toLowerCase()}`}
-          onClick={() => onChange("")}
-          className="absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground"
-        >
-          <X />
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/** Switches the list to archived records only, and back. */
-function ArchivedToggle({ archived, onToggle }: { archived: boolean; onToggle: () => void }) {
-  return (
-    <Button
-      variant="outline"
-      size="lg"
-      aria-pressed={archived}
-      onClick={onToggle}
-      className={cn("bg-card", archived && "border-brand/50 bg-accent text-accent-foreground")}
-    >
-      <Archive />
-      {archived ? "Archived only" : "Show archived"}
-    </Button>
-  );
-}
-
-function ResetFilters({ onReset }: { onReset: () => void }) {
-  return (
-    <Button variant="ghost" size="lg" className="text-muted-foreground" onClick={onReset}>
-      Reset
-    </Button>
-  );
-}
-
-/**
- * The toolbar: an optional full-width search, then the filters filling a row,
- * ending with the archived view's toggle and, while any filter is set, Reset.
- * With no filters, the search fills that row instead.
- */
-export function FilterToolbar({
-  search,
-  archived,
-  onToggleArchived,
-  onReset,
-  children,
-}: {
-  search?: React.ReactNode;
-  /** The archived view is on. */
-  archived: boolean;
-  onToggleArchived: () => void;
-  /** Clears every filter; shown only while one is set. */
-  onReset?: () => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-3">
-      {children && search}
-      <div className="flex flex-wrap items-center gap-2">
-        {children ?? (search && <div className="min-w-0 flex-1 basis-60">{search}</div>)}
-        <ArchivedToggle archived={archived} onToggle={onToggleArchived} />
-        {onReset && <ResetFilters onReset={onReset} />}
+    <FilterField label={label}>
+      <div className="flex gap-2">
+        <FilterDropdown
+          label={label}
+          allLabel={allLabel}
+          options={{ ...Object.fromEntries(presets.map((p) => [p.id, p.label])), [CUSTOM]: set && !picked ? rangeTriggerLabel(range.from, range.to) : "Custom range" }}
+          value={custom ? CUSTOM : (picked?.id ?? "")}
+          onChange={(next) => {
+            if (next === CUSTOM) return setCustomChosen(true);
+            setCustomChosen(false);
+            const preset = presets.find((p) => p.id === next);
+            onChange(preset ? toISODate(preset.from) : "", preset ? toISODate(preset.to) : "");
+          }}
+        />
+        {custom && (
+          <DateRangePicker
+            iconOnly
+            defaultOpen={customChosen}
+            centerOn={modal}
+            label={label}
+            placeholder="Pick the dates"
+            from={range.from}
+            to={range.to}
+            latest={latest}
+            onChange={onChange}
+            className="w-9 shrink-0 px-0"
+          />
+        )}
       </div>
-    </div>
+    </FilterField>
+  );
+}
+
+/** The modal's last row: the archived view on or off. */
+export function FilterArchived({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="col-span-full flex cursor-pointer items-center gap-2 border-t pt-3 text-sm">
+      <Checkbox checked={checked} onCheckedChange={(next) => onChange(next === true)} />
+      {label}
+    </label>
   );
 }

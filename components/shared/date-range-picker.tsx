@@ -4,22 +4,25 @@
 // two comparison ranges, each shown for "Custom range" beside its dropdown
 // of quick picks. Click the first day, then the last (either order; the same
 // day twice is one day): the range applies and the calendar closes. Two
-// months from md, one on phones. Values are DD/MM/YYYY in, YYYY-MM-DD out
+// months from md, one on phones; it pages only as far as `earliest` / `latest`,
+// and `maxYears` limits how far the last day can be from the first. Values are DD/MM/YYYY in, YYYY-MM-DD out
 // (they go into the URL).
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { addDays, addYears, subYears } from "date-fns";
 import { CalendarRange } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { formatDisplayDate, fromLocalDay, rangeLabel, toISODate, toLocalDay } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
-import { outsideLimits } from "./date-picker";
+import { calendarPlacement, outsideLimits } from "./date-picker";
 
 /** What the trigger says: "1 Oct – 29 Oct 2026", "From 1 Oct 2026", "Until 29 Oct 2026". */
-function triggerLabel(from: string, to: string): string {
+export function rangeTriggerLabel(from: string, to: string): string {
   if (from && to) return rangeLabel(from, to);
   if (from) return `From ${formatDisplayDate(from)}`;
   return `Until ${formatDisplayDate(to)}`;
@@ -33,6 +36,10 @@ export function DateRangePicker({
   placeholder = "Any date",
   earliest,
   latest,
+  maxYears,
+  iconOnly,
+  defaultOpen = false,
+  centerOn,
   className,
 }: {
   /** The range shown (DD/MM/YYYY; "" for an open end). */
@@ -47,12 +54,22 @@ export function DateRangePicker({
   /** The first and last days that can be picked (DD/MM/YYYY). */
   earliest?: string;
   latest?: string;
+  /** A range must cover less than this many years: once the first day is clicked, days too far from it are disabled. */
+  maxYears?: number;
+  /** The trigger is the calendar icon alone (what's picked shows elsewhere). */
+  iconOnly?: boolean;
+  /** The calendar is open from the start. */
+  defaultOpen?: boolean;
+  /** Opens centred over this element instead of under the trigger. */
+  centerOn?: HTMLElement | null;
   className?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  const panel = useRef<HTMLDivElement>(null);
   // The first day clicked, while the last is being picked
   const [start, setStart] = useState<Date | undefined>();
   const set = !!(from || to);
+  const wide = useMediaQuery("(min-width: 48rem)");
 
   const apply = (first: string, last: string) => {
     setOpen(false);
@@ -81,24 +98,28 @@ export function DateRangePicker({
           <Button
             variant="outline"
             size="lg"
-            aria-label={`${label}: ${set ? triggerLabel(from, to) : placeholder}`}
-            className={cn("text-sm justify-start bg-card font-normal tabular", set ? "border-brand/50 text-foreground" : "text-muted-foreground", className)}
+            aria-label={`${label}: ${set ? rangeTriggerLabel(from, to) : placeholder}`}
+            className={cn("text-sm justify-start bg-card font-normal tabular", set ? "border-brand/50 text-foreground" : "text-muted-foreground", iconOnly && "justify-center", className)}
           />
         }
       >
         <CalendarRange aria-hidden />
-        <span className="truncate">{set ? triggerLabel(from, to) : placeholder}</span>
+        {!iconOnly && <span className="truncate">{set ? rangeTriggerLabel(from, to) : placeholder}</span>}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] gap-0 p-0">
+      <PopoverContent ref={panel} initialFocus={panel} {...calendarPlacement(centerOn)} className="w-auto max-w-[calc(100vw-2rem)] gap-0 p-0">
         <Calendar
           mode="range"
           selected={selected}
           onSelect={(_range, day) => pick(day)}
           defaultMonth={toLocalDay(from) ?? toLocalDay(latest ?? "")}
-          numberOfMonths={2}
-          disabled={outsideLimits(earliest, latest)}
-          // One month on phones: the second is hidden below md
-          className="max-md:[&_.rdp-month+.rdp-month]:hidden"
+          numberOfMonths={wide ? 2 : 1}
+          // The calendar stays within these, so it never opens on or pages to a month with nothing to pick
+          startMonth={toLocalDay(earliest ?? "")}
+          endMonth={toLocalDay(latest ?? "")}
+          disabled={[
+            ...outsideLimits(earliest, latest),
+            ...(start && maxYears ? [{ before: addDays(subYears(start, maxYears), 1) }, { after: addDays(addYears(start, maxYears), -1) }] : []),
+          ]}
         />
         {start && (
           <p className="border-t px-3 py-2 text-xs text-muted-foreground" aria-live="polite">

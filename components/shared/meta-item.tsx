@@ -4,9 +4,9 @@
 
 export function MetaItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="space-y-1">
       <dt className="eyebrow text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-medium break-words tabular">{value}</dd>
+      <dd className="font-medium break-words tabular">{value}</dd>
     </div>
   );
 }

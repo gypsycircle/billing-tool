@@ -60,7 +60,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
     applyServerErrors,
     editBody: editChanges,
     onSaved: ({ expense }) => ({
-      message: `Expense No. ${expense.expenseNumber} ${mode === "create" ? "added" : "updated"}`,
+      message: `Expense No. ${expense.expenseNumber} ${mode === "create" ? "added" : "updated"}.`,
       href: routes.expenses.page(expense.expenseId),
     }),
   });
@@ -83,7 +83,7 @@ export function ExpenseForm(props: ExpenseFormProps) {
           value={number}
           hint={mode === "create" ? "The next free number, confirmed when you save." : undefined}
         />
-        <DateField name="expenseDate" label="Expense date" max={today} hint="Today or earlier." required />
+        <DateField name="expenseDate" label="Expense date" max={today} required />
       </FormSection>
 
       <FormSection

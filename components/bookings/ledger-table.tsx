@@ -21,31 +21,65 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDisplayDate } from "@/lib/domain/dates";
 import { routes } from "@/lib/domain/routes";
 import type { LedgerTotals } from "@/lib/domain/summary";
-import { refundStatusOf } from "@/lib/domain/refunds";
+import { keptAmount, paymentBadgeOf } from "@/lib/domain/refunds";
+import type { BookingFilters, TripStatus } from "@/lib/domain/filters";
 import { actionTargetOf, type LedgerRow } from "@/lib/domain/types";
 import { cn } from "@/lib/utils";
 import { BookingRowMenu } from "./booking-row-menu";
 
-/** Its payment status; a cancelled booking's refund instead, with the amount. */
-function PaymentCell({ booking }: { booking: LedgerRow }) {
-  const refund = refundStatusOf(booking);
-  if (!refund) return <StatusBadge value={booking.paymentStatus} />;
-  return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap md:flex-col md:items-start md:gap-0.5">
-      <StatusBadge value={refund} />
-      <Money amount={booking.refundAmount} className="text-xs" />
-    </span>
-  );
+const PaymentCell = ({ booking }: { booking: LedgerRow }) => <StatusBadge value={paymentBadgeOf(booking)} />;
+
+/** One money column: its heading, a row's figure, and its total over every match. */
+interface Figure {
+  label: string;
+  cell: (booking: LedgerRow) => React.ReactNode;
+  total: (totals: LedgerTotals) => number;
+  strong?: boolean;
+  /** A phone card's label, when it differs by booking. */
+  cardLabel?: (booking: LedgerRow) => string;
 }
 
-/** A cancelled trip owes nothing. */
-const Balance = ({ booking }: { booking: LedgerRow }) => (booking.bookingStatus === "Cancelled" ? "—" : <Money amount={booking.balanceAmount} />);
+const TOTAL = { label: "Total", cell: (b: LedgerRow) => <Money amount={b.totalAmount} /> };
+const RECEIVED = { label: "Received", cell: (b: LedgerRow) => <Money amount={b.amountPaid} /> };
+const BALANCE = { label: "Balance", cell: (b: LedgerRow) => <Money amount={b.balanceAmount} />, strong: true };
+/**
+ * The three money columns. Active: what's still owed. Cancelled: where the money
+ * went, so each column adds up its own rows. Archived: their own figures.
+ */
+function figuresFor(status: TripStatus, archived: boolean, payment?: BookingFilters["payment"]): readonly Figure[] {
+  if (archived) {
+    return [
+      { ...TOTAL, total: (t) => t.total },
+      { ...RECEIVED, total: (t) => t.received },
+      { ...BALANCE, total: (t) => t.balance },
+    ];
+  }
+  if (status === "Cancelled") {
+    return [
+      { ...RECEIVED, total: (t) => t.received },
+      { label: "Kept", cell: (b) => <Money amount={keptAmount(b)} />, total: (t) => t.activeReceived },
+      {
+        // One heading has to cover every row: Refunded only when the filter leaves paid ones alone. The Payment badge tells them apart.
+        label: payment === "Refunded" ? "Refunded" : "Refund",
+        cardLabel: (b) => (b.refundedOn ? "Refunded" : "Refund"),
+        cell: (b) => <Money amount={b.refundAmount} />,
+        total: (t) => t.refundTotal,
+        strong: true,
+      },
+    ];
+  }
+  return [
+    { ...TOTAL, total: (t) => t.activeTotal },
+    { ...RECEIVED, total: (t) => t.activeReceived },
+    { ...BALANCE, total: (t) => t.activeBalance },
+  ];
+}
 
 /** Customer and Trip share the room the other columns leave, down to a readable minimum; longer text is cut short. */
-const FLEXIBLE = { className: "w-1/4 max-w-0", headerClassName: "min-w-28" };
+const FLEXIBLE = { className: "w-1/4 max-w-0", headerClassName: "min-w-24" };
 const FLEXIBLE_TEXT = "block truncate";
 
-const COLUMNS: readonly LedgerColumn<LedgerRow>[] = [
+const columnsFor = (figures: readonly Figure[]): readonly LedgerColumn<LedgerRow>[] => [
   numberColumn((b) => b.invoiceNumber),
   {
     header: "Customer",
@@ -76,9 +110,7 @@ const COLUMNS: readonly LedgerColumn<LedgerRow>[] = [
   },
   { header: "Starts", className: "whitespace-nowrap tabular", cell: (b) => formatDisplayDate(b.tripStartDate) },
   amountColumn("Pax", (b) => b.travellers, { className: "tabular" }),
-  amountColumn("Total", (b) => <Money amount={b.totalAmount} />),
-  amountColumn("Received", (b) => <Money amount={b.amountPaid} />),
-  amountColumn("Balance", (b) => <Balance booking={b} />, { strong: true }),
+  ...figures.map(({ label, cell, strong }) => amountColumn(label, cell, { strong })),
   { header: "Payment", cell: (b) => <PaymentCell booking={b} /> },
   { header: "Trip", cell: (b) => <StatusBadge value={b.bookingStatus} /> },
   { header: "Closed by", className: "max-w-20 truncate", cell: (b) => <span title={b.closedBy?.label}>{b.closedBy?.label ?? "—"}</span> },
@@ -93,36 +125,33 @@ export function LedgerTable({
   bookings,
   totals: all,
   archived = false,
+  status,
+  payment,
 }: {
   bookings: LedgerRow[];
   totals: LedgerTotals;
   /** The archived view: totals cover the archived bookings shown. */
   archived?: boolean;
+  /** The Trip status filter's choice: which bookings these are, and so which money columns. */
+  status: TripStatus;
+  /** The Payment filter's choice, which sets the Refund column's heading. */
+  payment?: BookingFilters["payment"];
 }) {
-  // Otherwise, like the summary figures, totals count active bookings only
-  const totals = archived
-    ? { total: all.total, received: all.received, balance: all.balance }
-    : { total: all.activeTotal, received: all.activeReceived, balance: all.activeBalance };
+  const figures = figuresFor(status, archived, payment);
 
   return (
     <LedgerTableFrame
       rows={bookings}
       rowKey={(b) => b.bookingId}
-      columns={COLUMNS}
-      muted={(b) => b.bookingStatus !== "Active"}
-      dense
+      columns={columnsFor(figures)}
       footer={
         <>
-          <TotalsLabelCell colSpan={5}>{archived ? `${all.count} archived` : `${all.activeCount} active of ${all.count} matching · received after refunds`}</TotalsLabelCell>
-          <TotalCell>
-            <Money amount={totals.total} />
-          </TotalCell>
-          <TotalCell>
-            <Money amount={totals.received} />
-          </TotalCell>
-          <TotalCell strong>
-            <Money amount={totals.balance} />
-          </TotalCell>
+          <TotalsLabelCell colSpan={5}>{`${all.count} ${archived ? "archived" : status.toLowerCase()}`}</TotalsLabelCell>
+          {figures.map(({ label, total, strong }) => (
+            <TotalCell key={label} strong={strong}>
+              <Money amount={total(all)} />
+            </TotalCell>
+          ))}
           <TableCell colSpan={4} />
         </>
       }
@@ -143,16 +172,14 @@ export function LedgerTable({
             columns={4}
             items={[
               { label: "Pax", value: <span className="tabular">{b.travellers}</span> },
-              { label: "Total", value: <Money amount={b.totalAmount} /> },
-              { label: "Received", value: <Money amount={b.amountPaid} /> },
-              { label: "Balance", value: <Balance booking={b} />, strong: true },
+              ...figures.map(({ label, cardLabel, cell, strong }) => ({ label: cardLabel?.(b) ?? label, value: cell(b), strong })),
             ]}
           />
           <CardMeta
             items={[
               { label: "Payment", value: <PaymentCell booking={b} /> },
               { label: "Trip", value: <StatusBadge value={b.bookingStatus} /> },
-              { label: "Closed by", value: <span className="text-foreground">{b.closedBy?.label ?? "—"}</span> },
+              { label: "Lead closed by", value: <span className="text-foreground">{b.closedBy?.label ?? "—"}</span> },
             ]}
           />
         </>

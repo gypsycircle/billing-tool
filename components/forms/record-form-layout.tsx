@@ -30,14 +30,16 @@ export function RecordFormLayout<In extends FieldValues, Out extends FieldValues
       <form onSubmit={onSubmit} noValidate className={FORM_PAGE}>
         <div className="space-y-8">{children}</div>
 
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
           {summary}
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2">
             <SubmitButton label={submit.label} pending={submit.pending} saved={submit.saved} disabled={!submit.canSubmit} size="lg" className={FORM_BUTTON} />
             <Button variant="ghost" size="lg" className={cn(FORM_BUTTON, "text-muted-foreground")} nativeButton={false} render={<Link href={submit.cancelHref} />}>
               Cancel
             </Button>
-            <p className="mt-1 text-center text-xs text-muted-foreground">Saved straight to the database.</p>
+            </div>
+            <p className="text-center text-xs text-muted-foreground">Saved straight to the database.</p>
           </div>
         </aside>
       </form>

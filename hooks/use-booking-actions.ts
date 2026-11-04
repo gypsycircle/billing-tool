@@ -16,10 +16,10 @@ export function useBookingActions(booking: Pick<BookingRef, "bookingId" | "invoi
     version: booking.updatedAt,
     title,
     restoreBody: { bookingStatus: "Active" },
-    findArchived: inList ? "Show archived" : undefined,
+    findArchived: inList ? "bookings" : undefined,
   });
   return {
     ...actions,
-    reactivate: () => actions.run({ method: "PATCH", body: { bookingStatus: "Active" } }, `${title} is active again`),
+    reactivate: () => actions.run({ method: "PATCH", body: { bookingStatus: "Active" } }, `${title} is active again.`),
   };
 }

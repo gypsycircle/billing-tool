@@ -1,6 +1,6 @@
 // lib/domain/date-range.ts
-// A list's date-range filter (bookings by trip start, expenses by expense
-// date): the range from the URL (?from=YYYY-MM-DD&to=…, never trusted) and the
+// A list's date-range filter (bookings by trip start and by the day booked,
+// expenses by expense date): the range from the URL (?from=YYYY-MM-DD&to=…, never trusted) and the
 // quick picks its dropdown offers before "Custom range". Dates are DD/MM/YYYY (UTC
 // midnight); "today" is passed in (todayIST()), so the server works the picks
 // out and the browser's timezone never shifts them.
@@ -60,8 +60,8 @@ export function tripDatePresets(today: string): DatePreset[] {
   ];
 }
 
-/** The expenses list's picks, by expense date: spending so far. */
-export function expenseDatePresets(today: string): DatePreset[] {
+/** Picks that stop at today, for dates that can't be ahead: an expense's date, the day a booking was made. */
+export function pastDatePresets(today: string): DatePreset[] {
   const t = parseDDMMYYYY(today)!;
   const last = startOfMonth(subMonths(t, 1));
   const lastYear = startOfYear(subDays(startOfYear(t), 1));

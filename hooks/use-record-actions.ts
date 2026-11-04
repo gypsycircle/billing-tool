@@ -10,7 +10,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { RECORD_VERSION_HEADER } from "@/lib/domain/records";
+import { RECORD_VERSION_HEADER, restoreHint } from "@/lib/domain/records";
 import { useApiMutation } from "./use-api-mutation";
 
 type Change = { method: "PATCH"; body: unknown } | { method: "DELETE" };
@@ -24,7 +24,7 @@ interface RecordActionsOptions {
   title: string;
   /** The PATCH body that restores it (default { status: "Active" }). */
   restoreBody?: unknown;
-  /** Where an archived one is found again, said in the archive toast from a list ("Show archived"). */
+  /** From a list: its name ("bookings", "team members"), so the archive toast can say how to find the record again. */
   findArchived?: string;
 }
 
@@ -48,9 +48,9 @@ export function useRecordActions({ url, version, title, restoreBody = { status: 
   return {
     pending,
     run,
-    restore: () => run({ method: "PATCH", body: restoreBody }, `${title} restored`),
+    restore: () => run({ method: "PATCH", body: restoreBody }, `${title} restored.`),
     /** Archive. The page stays where it is: a list drops the row, a record's page shows it archived with Restore. */
-    archive: () => run({ method: "DELETE" }, `${title} archived${findArchived ? ` — you can restore it from ${findArchived}` : ""}`),
+    archive: () => run({ method: "DELETE" }, `${title} archived.${findArchived ? ` ${restoreHint(findArchived)}` : ""}`),
   };
 }
 

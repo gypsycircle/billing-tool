@@ -45,10 +45,10 @@ export async function getGeneralList({ kind }: { kind: GeneralKind | undefined }
   return generalRepo.list({ kind });
 }
 
-/** One page of a list for Settings (NAMED_PAGE_SIZE a page), by name: its active items, or its archived ones (`empty`: the list has no items at all). */
-export async function getGeneralListPage(kind: GeneralKind, page: number, { archived }: { archived: boolean }): Promise<{ items: GeneralItem[]; empty: boolean } & PageInfo> {
+/** One page of a list for Settings (NAMED_PAGE_SIZE a page), by name: its active items, or its archived ones, matching the search (`empty`: the list has no items at all). */
+export async function getGeneralListPage(kind: GeneralKind, page: number, { q, archived }: { q: string; archived: boolean }): Promise<{ items: GeneralItem[]; empty: boolean } & PageInfo> {
   await verifySession();
-  const result = await generalRepo.page(page, { scope: { kind }, archived });
+  const result = await generalRepo.page(page, { scope: { kind }, archived, q });
   return { ...result, empty: result.total === 0 && !(await generalRepo.exists({ kind })) };
 }
 

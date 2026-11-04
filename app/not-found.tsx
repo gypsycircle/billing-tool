@@ -12,7 +12,7 @@ export default function NotFound() {
     <StatusPage
       mark="404"
       title="This page isn't in the ledger"
-      description="The link may be mistyped, or the booking may have been archived."
+      description="The link may be mistyped, or the page may no longer exist."
       actions={
         <Button nativeButton={false} render={<Link href={routes.bookings.list} />}>
           Back to bookings

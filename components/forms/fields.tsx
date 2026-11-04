@@ -53,11 +53,8 @@ function FieldShell({
         </span>
       </FieldLabel>
       {children}
-      {error ? (
-        <FieldError id={`${name}-error`}>{error}</FieldError>
-      ) : (
-        hint && <FieldDescription className="text-xs">{hint}</FieldDescription>
-      )}
+      {error && <FieldError id={`${name}-error`}>{error}</FieldError>}
+      {hint && <FieldDescription className="text-xs">{hint}</FieldDescription>}
     </Field>
   );
 }
@@ -221,8 +218,7 @@ export function NumberField<T extends FieldValues = FieldValues>({
 }
 
 /**
- * One choice from a fixed list: `options` maps each value to its label. An
- * optional field gets `emptyLabel`, a first choice that clears it.
+ * One choice from a fixed list: `options` maps each value to its label.
  */
 export function SelectField<T extends FieldValues = FieldValues>({
   name,
@@ -232,9 +228,8 @@ export function SelectField<T extends FieldValues = FieldValues>({
   className,
   options,
   placeholder = "Choose…",
-  emptyLabel,
   disabled,
-}: BaseProps<T> & { options: Readonly<Record<string, string>>; placeholder?: string; emptyLabel?: string; disabled?: boolean }) {
+}: BaseProps<T> & { options: Readonly<Record<string, string>>; placeholder?: string; disabled?: boolean }) {
   const { control } = useFormContext<T>();
 
   return (
@@ -256,7 +251,6 @@ export function SelectField<T extends FieldValues = FieldValues>({
             value={field.value ?? ""}
             onChange={field.onChange}
             placeholder={placeholder}
-            emptyLabel={emptyLabel}
             disabled={disabled}
             className="h-10 w-full"
             trigger={{
@@ -300,7 +294,7 @@ export function TextareaField<T extends FieldValues = FieldValues>({
         {...register(name)}
       />
       <div className="flex items-start justify-between gap-4 text-xs text-muted-foreground">
-        <span>{!error && hint}</span>
+        <span>{hint}</span>
         <span id={`${name}-count`} className={cn("tabular shrink-0", over && "font-medium text-destructive")}>
           {value.length}/{maxLength}
         </span>

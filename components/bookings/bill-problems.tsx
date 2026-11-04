@@ -5,8 +5,9 @@
 
 import Link from "next/link";
 import { routes } from "@/lib/domain/routes";
-import { FileWarning, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StatusNotice } from "@/components/shared/status-notice";
 
 interface BillProblemsProps {
   bookingId: string;
@@ -15,31 +16,23 @@ interface BillProblemsProps {
 
 export function BillProblems({ bookingId, problems }: BillProblemsProps) {
   return (
-    <section
-      role="alert"
-      className="mb-6 flex flex-col gap-4 rounded-lg border border-status-unpaid/25 bg-status-unpaid-soft px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+    <StatusNotice
+      tone="danger"
+      action={
+        <Button variant="outline" size="sm" className="self-start bg-card sm:self-center" nativeButton={false} render={<Link href={routes.bookings.edit(bookingId)} />}>
+          <Pencil />
+          Fix in edit
+        </Button>
+      }
     >
-      <div className="flex gap-3">
-        <FileWarning className="mt-0.5 size-4 shrink-0 text-status-unpaid" aria-hidden />
-        <div>
-          <p className="font-medium text-status-unpaid">This booking can&apos;t be printed on the Bill of Supply yet.</p>
-          <ul className="mt-1 space-y-0.5 text-foreground/80">
-            {problems.map((problem) => (
-              <li key={problem}>{problem}</li>
-            ))}
-          </ul>
-        </div>
+      <div className="space-y-1">
+        <p className="font-medium">This booking can&apos;t be printed on the Bill of Supply yet.</p>
+        <ul className="space-y-0.5 text-foreground/80">
+          {problems.map((problem) => (
+            <li key={problem}>{problem}</li>
+          ))}
+        </ul>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start bg-card sm:self-center"
-        nativeButton={false}
-        render={<Link href={routes.bookings.edit(bookingId)} />}
-      >
-        <Pencil />
-        Fix in edit
-      </Button>
-    </section>
+    </StatusNotice>
   );
 }

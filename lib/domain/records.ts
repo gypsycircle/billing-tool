@@ -18,3 +18,10 @@ export type ArchivableStatus = (typeof ARCHIVABLE_STATUSES)[number];
 /** True for an archived record, whichever field holds its status (a booking's bookingStatus, the rest's status). */
 export const isArchived = (record: { status: string } | { bookingStatus: string }): boolean =>
   ("bookingStatus" in record ? record.bookingStatus : record.status) === "Archived";
+
+/** The tick box in a list's Filters that shows its archived records; `things`: "bookings", "team members". */
+export const showArchivedLabel = (things: string): string => `Show archived ${things} only`;
+
+/** How to get an archived record back, for the toast after archiving it from a list. */
+export const restoreHint = (things: string): string =>
+  `To restore ${things === "team members" ? "them" : "it"}, open Filters and tick ${showArchivedLabel(things)}.`;

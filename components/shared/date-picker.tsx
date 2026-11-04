@@ -1,13 +1,13 @@
 // components/shared/date-picker.tsx
 // One date (shadcn's Date Picker: a Popover around the Calendar). The trigger
 // shows the day ("7 Feb 2027"); month and year are dropdowns, so a day months
-// away is a couple of taps; days outside `min` / `max` are disabled. Picking a
-// day sets it and closes. Values are DD/MM/YYYY. Forms use it through
+// away is a couple of taps; days outside `min` / `max` are disabled, and the
+// dropdowns stop at them. Picking a day sets it and closes. Values are DD/MM/YYYY. Forms use it through
 // DateField (components/forms/fields.tsx).
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatDisplayDate, fromLocalDay, toLocalDay } from "@/lib/domain/dates";
 import { cn } from "@/lib/utils";
 
-/** The years the month / year dropdowns offer: well back for old records, a few ahead for trips. */
+/** The years the month / year dropdowns offer with no limit that way: well back for old records, a few ahead for trips. */
 const YEARS_BACK = 10;
 const YEARS_AHEAD = 5;
 
@@ -24,6 +24,18 @@ export function outsideLimits(min?: string, max?: string) {
   const before = min ? toLocalDay(min) : undefined;
   const after = max ? toLocalDay(max) : undefined;
   return [...(before ? [{ before }] : []), ...(after ? [{ after }] : [])];
+}
+
+/** Where a calendar opens: under its trigger, or centred over `centerOn` (a modal, so nothing in it moves). */
+export function calendarPlacement(centerOn?: HTMLElement | null) {
+  if (!centerOn) return { align: "start" } as const;
+  return {
+    anchor: centerOn,
+    side: "bottom",
+    align: "center",
+    // From the anchor's bottom edge, back up to where the two centres meet
+    sideOffset: ({ anchor, positioner }: { anchor: { height: number }; positioner: { height: number } }) => -(anchor.height + positioner.height) / 2,
+  } as const;
 }
 
 export function DatePicker({
@@ -59,8 +71,12 @@ export function DatePicker({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
   const selected = toLocalDay(value);
   const thisYear = new Date().getFullYear();
+  // The dropdowns offer what can be picked, and a saved date older than that, so it can still be shown
+  const startMonth = min ? [toLocalDay(min), selected].filter((d) => d !== undefined).reduce((a, b) => (b < a ? b : a)) : new Date(thisYear - YEARS_BACK, 0);
+  const endMonth = max ? [toLocalDay(max), selected].filter((d) => d !== undefined).reduce((a, b) => (b > a ? b : a)) : new Date(thisYear + YEARS_AHEAD, 11);
 
   return (
     <Popover
@@ -86,7 +102,7 @@ export function DatePicker({
         <CalendarDays className="text-muted-foreground" aria-hidden />
         {value ? formatDisplayDate(value) : <span className="text-muted-foreground">{placeholder}</span>}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto max-w-[calc(100vw-2rem)] p-0">
+      <PopoverContent ref={panel} initialFocus={panel} align="start" className="w-auto max-w-[calc(100vw-2rem)] p-0">
         <Calendar
           mode="single"
           selected={selected}
@@ -99,8 +115,8 @@ export function DatePicker({
           }}
           disabled={outsideLimits(min, max)}
           captionLayout="dropdown"
-          startMonth={new Date(thisYear - YEARS_BACK, 0)}
-          endMonth={new Date(thisYear + YEARS_AHEAD, 11)}
+          startMonth={startMonth}
+          endMonth={endMonth}
         />
       </PopoverContent>
     </Popover>

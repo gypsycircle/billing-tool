@@ -11,18 +11,23 @@ import type { SaveTarget } from "./use-save-record";
 import { useShortcut } from "./use-shortcut";
 
 export function useRecordDialog<Rec extends NamedRecord>({ shortcut, api }: { shortcut: string; api: { list: string; one: (id: string) => string } }) {
-  const [editing, setEditing] = useState<Rec | "new" | null>(null);
-  const openNew = () => setEditing("new");
+  const [open, setOpen] = useState(false);
+  // Kept after closing: the dialog still shows it while it fades out
+  const [record, setRecord] = useState<Rec | null>(null);
+  const openWith = (rec: Rec | null) => {
+    setRecord(rec);
+    setOpen(true);
+  };
+  const openNew = () => openWith(null);
   useShortcut(shortcut, openNew);
-  /** The record being edited, or null while adding (or closed). */
-  const record = editing === "new" ? null : editing;
   const target: SaveTarget = record ? { mode: "edit", url: api.one(record.id), version: record.updatedAt } : { mode: "create", url: api.list };
 
   return {
+    /** The record being edited, or null while adding. */
     record,
     openNew,
-    openEdit: (rec: Rec) => setEditing(rec),
+    openEdit: openWith,
     /** RecordDialog's open state and save target. */
-    dialog: { open: editing !== null, onOpenChange: (open: boolean) => !open && setEditing(null), target },
+    dialog: { open, onOpenChange: setOpen, target },
   };
 }

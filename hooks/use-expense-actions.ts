@@ -13,6 +13,6 @@ export function useExpenseActions(expense: Pick<ExpenseRef, "expenseId" | "expen
     url: routes.api.expenses.one(expense.expenseId),
     version: expense.updatedAt,
     title: `Expense No. ${expense.expenseNumber}`,
-    findArchived: inList ? "Show archived" : undefined,
+    findArchived: inList ? "expenses" : undefined,
   });
 }

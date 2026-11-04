@@ -34,6 +34,7 @@ export function BookingDetailActions({ booking }: { booking: BookingActionTarget
     <RecordDetailActions
       editHref={routes.bookings.edit(booking.bookingId)}
       archived={!hasBill}
+      canArchive={booking.bookingStatus === "Active"}
       actions={actions}
       copy={bookingArchiveCopy(booking)}
       statusItems={<BookingStatusItems booking={booking} actions={actions} onCancel={() => setCancelling(true)} />}

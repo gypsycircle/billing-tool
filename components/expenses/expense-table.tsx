@@ -19,7 +19,7 @@ import {
 import { Money } from "@/components/shared/money";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDisplayDate } from "@/lib/domain/dates";
-import { expenseActionTargetOf, expenseTypeLabel, paidForLabel, type ExpenseRow } from "@/lib/domain/expenses";
+import { expenseActionTargetOf, expenseTypeLabel, paidForLabel, type ExpenseRow, expenseStatusBadge } from "@/lib/domain/expenses";
 import { routes } from "@/lib/domain/routes";
 import { ExpenseRowMenu } from "./expense-row-menu";
 
@@ -43,7 +43,7 @@ const COLUMNS: readonly LedgerColumn<ExpenseRow>[] = [
     cell: (e) => <span className="block truncate">{paidForLabel(e.expenseType, e.paidFor)}</span>,
   },
   { header: "Kind", cell: (e) => <StatusBadge value={e.expenseKind} /> },
-  { header: "Status", cell: (e) => <StatusBadge value={e.status} /> },
+  { header: "Status", cell: (e) => <StatusBadge value={expenseStatusBadge(e.status)} /> },
   amountColumn("Amount", (e) => <Money amount={e.amount} />, { strong: true }),
   actionsColumn((e) => <ExpenseRowMenu expense={expenseActionTargetOf(e)} />),
 ];
@@ -96,7 +96,7 @@ export function ExpenseTable({
           <CardMeta
             items={[
               { label: "Kind", value: <StatusBadge value={e.expenseKind} /> },
-              { label: "Status", value: <StatusBadge value={e.status} /> },
+              { label: "Status", value: <StatusBadge value={expenseStatusBadge(e.status)} /> },
             ]}
           />
         </>

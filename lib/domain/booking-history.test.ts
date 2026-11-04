@@ -8,6 +8,11 @@ const entry = (travellers: number, totalAmount: number, amountPaid: number, rebu
   totalAmount,
   amountPaid,
   balanceAmount: totalAmount - amountPaid,
+  ratePerPerson: 5_500,
+  discountAmount: 0,
+  slotAmount: 0,
+  packageType: "Group",
+  cancelled: false,
   rebuilt,
   event: null,
   refundAmount: 0,
@@ -17,8 +22,11 @@ const entry = (travellers: number, totalAmount: number, amountPaid: number, rebu
 const changesOf = (...entries: HistoryEntry[]) => bookingHistory(entries).map((r) => [r.change, r.payment]).reverse();
 
 describe("historyChanged", () => {
-  const base = { travellers: 2, totalAmount: 11_000, amountPaid: 5_000 };
-  it("is true when people, total or amount received change", () => {
+  const base = { travellers: 2, totalAmount: 11_000, amountPaid: 5_000, ratePerPerson: 5_500, discountAmount: 0, slotAmount: 0, packageType: "Group" as const };
+  it("is true when people, price, slot amount or amount received change", () => {
+    expect(historyChanged(base, { ...base, ratePerPerson: 6_000, discountAmount: 1_000 })).toBe(true);
+    expect(historyChanged(base, { ...base, slotAmount: 1_000 })).toBe(true);
+    expect(historyChanged(base, { ...base, packageType: "Private" })).toBe(true);
     expect(historyChanged(base, { ...base, travellers: 3 })).toBe(true);
     expect(historyChanged(base, { ...base, totalAmount: 10_000 })).toBe(true);
     expect(historyChanged(base, { ...base, amountPaid: 6_000 })).toBe(true);
@@ -54,7 +62,7 @@ describe("bookingHistory", () => {
 
   it("follows a cancellation and its refund", () => {
     const paid = entry(2, 11_000, 3_000);
-    const cancelled = { ...paid, event: "cancelled" as const, refundAmount: 2_000 };
+    const cancelled = { ...paid, event: "cancelled" as const, refundAmount: 2_000, cancelled: true };
     const refunded = { ...cancelled, event: "refund-paid" as const, refundPaid: true };
     const undone = { ...cancelled, event: "refund-undone" as const };
     const changed = { ...cancelled, event: "refund-changed" as const, refundAmount: 1_500 };
@@ -69,6 +77,16 @@ describe("bookingHistory", () => {
       ["Reactivated", 0, 3_000, 8_000],
     ]);
     expect(bookingHistory([paid, { ...paid, event: "cancelled" }])[0].change).toBe("Cancelled");
+  });
+
+  it("names the new changes, and an archived row keeps the balance of what it was", () => {
+    const paid = entry(2, 11_000, 3_000);
+    expect(changesOf(paid, { ...paid, ratePerPerson: 6_000, discountAmount: 1_000 })[1][0]).toBe("Rate or discount changed");
+    expect(changesOf(paid, { ...paid, slotAmount: 1_000 })[1][0]).toBe("Slot amount changed");
+    expect(changesOf({ ...paid, slotAmount: null }, paid)[1][0]).toBe("Updated");
+    const archived = bookingHistory([paid, { ...paid, event: "archived" }, { ...paid, event: "restored" }]).map((r) => [r.change, r.payment, r.balance]);
+    expect(archived).toEqual([["Restored", 0, 8_000], ["Archived", 0, 8_000], ["Booking created", 3_000, 8_000]]);
+    expect(bookingHistory([paid, { ...paid, event: "archived", cancelled: true }])[0].balance).toBeNull();
   });
 
   it("keeps a rebuilt row's mark", () => {

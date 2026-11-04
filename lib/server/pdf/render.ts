@@ -119,16 +119,31 @@ function drawShape(page: PDFPage, images: Record<ImageKey, PDFImage>, shape: Sha
 
 /**
  * A synchronous fit check (fonts loaded once), so the booking service can run
- * it on every save without waiting. Returns the problems, empty when the booking fits.
+ * it on every save without waiting. Returns the problems, empty when the booking
+ * fits both now and once cancelled (a taller bill, with its largest refund and
+ * full seal), so whatever is saved can always print. `before`: the saved booking
+ * an edit starts from. One already too long to fit once cancelled isn't held to
+ * that, so a payment can still be recorded on it; its note is named if it's cancelled.
  */
-export async function loadBillFitCheck(): Promise<(booking: BillBooking) => BillProblems> {
+export async function loadBillFitCheck(): Promise<(booking: BillBooking, before?: BillBooking) => BillProblems> {
   const faces = facesOf(await loadBillAssets());
-  return (booking) => layoutBill(billContent(booking), faces).problems;
+  const problemsOf = (booking: BillBooking) => layoutBill(billContent(booking), faces).problems;
+  const asCancelled = (booking: BillBooking) => {
+    const { invoiceDate: on, amountPaid: refundAmount } = booking;
+    return problemsOf({ ...booking, cancellation: { cancelledOn: on, refundAmount, refundedOn: on } });
+  };
+  const fits = (problems: BillProblems) => Object.keys(problems).length === 0;
+  return (booking, before) => {
+    const now = problemsOf(booking);
+    if (!fits(now)) return now;
+    const cancelled = asCancelled(booking);
+    return before && !fits(asCancelled(before)) ? {} : cancelled;
+  };
 }
 
-/** Problems that would stop this booking printing (empty when it fits). */
+/** Problems that stop this booking printing as it stands (empty when it fits). */
 export async function billProblems(booking: BillBooking): Promise<BillProblems> {
-  return (await loadBillFitCheck())(booking);
+  return layoutBill(billContent(booking), facesOf(await loadBillAssets())).problems;
 }
 
 /** The finished Bill of Supply. Throws BillDoesNotFitError instead of drawing outside its place. */

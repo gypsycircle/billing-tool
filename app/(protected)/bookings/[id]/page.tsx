@@ -10,12 +10,17 @@ import { BookingDocument } from "@/components/bookings/booking-document";
 import { BookingHistory } from "@/components/bookings/booking-history";
 import { ArchivedNotice, RecordPageHeader } from "@/components/shared/record-headers";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { PageBody, PageGroup } from "@/components/shared/page-body";
 import { StatusNotice } from "@/components/shared/status-notice";
+import { cancelledNotice } from "@/lib/domain/bill-text";
+import { pageParam } from "@/lib/domain/filters";
 import { isArchived } from "@/lib/domain/records";
+import { paymentBadgeOf } from "@/lib/domain/refunds";
 import { routes } from "@/lib/domain/routes";
 import { actionTargetOf, type Booking } from "@/lib/domain/types";
-import { getBooking, getBookingHistory } from "@/lib/server/bookings/service";
+import { getBooking, getBookingHistoryPage } from "@/lib/server/bookings/service";
 import { orNotFound } from "@/lib/server/records/load-for-page";
+import { billOf } from "@/lib/server/pdf/content";
 import { billProblems } from "@/lib/server/pdf/render";
 
 export const metadata: Metadata = { title: "Booking" };
@@ -27,13 +32,14 @@ export const metadata: Metadata = { title: "Booking" };
  * download of a booking that doesn't fit is refused with the field to fix.
  */
 async function BillCheck({ booking }: { booking: Booking }) {
-  const problems = Object.values(await billProblems(booking));
+  const problems = Object.values(await billProblems(billOf(booking)));
   return problems.length > 0 ? <BillProblems bookingId={booking.bookingId} problems={problems} /> : null;
 }
 
-export default async function BookingDetailPage({ params }: PageProps<"/bookings/[id]">) {
+export default async function BookingDetailPage({ params, searchParams }: PageProps<"/bookings/[id]">) {
   const { id } = await params;
-  const [booking, history] = await orNotFound(() => Promise.all([getBooking(id), getBookingHistory(id)]));
+  const historyPage = pageParam.parse((await searchParams).historyPage);
+  const [booking, history] = await orNotFound(() => Promise.all([getBooking(id), getBookingHistoryPage(id, historyPage)]));
   const archived = isArchived(booking);
 
   return (
@@ -44,8 +50,8 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
         title={booking.customerName}
         badges={
           <>
-            <StatusBadge value={booking.paymentStatus} />
             <StatusBadge value={booking.bookingStatus} />
+            <StatusBadge value={paymentBadgeOf(booking)} />
           </>
         }
         detail={booking.packageName}
@@ -53,21 +59,23 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
         actions={<BookingDetailActions booking={actionTargetOf(booking)} />}
       />
 
-      {/* Archived bookings have no bill, so there is nothing to check */}
-      {!archived && (
-        <Suspense fallback={null}>
-          <BillCheck booking={booking} />
-        </Suspense>
-      )}
+      <PageBody>
+        <PageGroup>
+          {/* Archived bookings have no bill, so there is nothing to check */}
+          {!archived && (
+            <Suspense fallback={null}>
+              <BillCheck booking={booking} />
+            </Suspense>
+          )}
+          {archived && <ArchivedNotice what="booking" hidden="hidden from the bookings list" />}
+          {booking.bookingStatus === "Cancelled" && <StatusNotice tone="danger">{cancelledNotice(booking)}</StatusNotice>}
+          <BookingDocument booking={booking} />
+        </PageGroup>
 
-      {archived && <ArchivedNotice what="booking" hidden="hidden from the ledger" />}
-      {booking.bookingStatus === "Cancelled" && <StatusNotice>This booking is cancelled. Only the money it keeps counts in the figures.</StatusNotice>}
+        {booking.bookingStatus === "Cancelled" && <BookingCancellation booking={booking} />}
 
-      <BookingDocument booking={booking} />
-
-      {booking.bookingStatus === "Cancelled" && <BookingCancellation booking={booking} />}
-
-      <BookingHistory booking={booking} history={history} />
+        <BookingHistory booking={booking} history={history} />
+      </PageBody>
     </>
   );
 }

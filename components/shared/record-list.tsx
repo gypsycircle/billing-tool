@@ -5,6 +5,7 @@
 
 import type { PageInfo } from "@/lib/domain/filters";
 import { cn } from "@/lib/utils";
+import { LIST_STACK } from "./layout-classes";
 import { Pagination, type PageLinks } from "./pagination";
 
 export function RecordList({
@@ -35,7 +36,7 @@ export function RecordList({
 }) {
   if (empty) return empty;
   return (
-    <div id={id} className={cn("scroll-mt-24 space-y-4", className)}>
+    <div id={id} className={cn("scroll-mt-24", LIST_STACK, className)}>
       {filters}
       {page.total > 0 ? (
         <>

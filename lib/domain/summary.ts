@@ -27,12 +27,17 @@ export interface LedgerTotals {
   total: number;
   received: number;
   balance: number;
-  /** The active ones among them (the totals row counts these, except in the archived view). */
+  /** The active ones among them. */
   activeCount: number;
+  /** The active ones' totals, plus what the cancelled ones keep. */
   activeTotal: number;
   /** Received on the active ones, plus what the cancelled ones keep. */
   activeReceived: number;
   activeBalance: number;
+  /** Refunds that have gone back. */
+  refunded: number;
+  /** Every refund's amount, gone back or still due. */
+  refundTotal: number;
 }
 
 /** Days ahead that count as "due soon" (the "Due in 7 days" figure and filter). */

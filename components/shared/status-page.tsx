@@ -16,15 +16,19 @@ export function StatusPage({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6 py-16 text-center">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-12 px-6 py-16 text-center">
       <BrandMark className="h-8 text-brand" />
-      <p className="mt-12 font-heading text-7xl font-light tracking-tight text-muted-foreground/60 tabular sm:text-8xl">
-        {mark}
-      </p>
-      <div className="rule-double mx-auto mt-6 w-24" aria-hidden />
-      <h1 className="mt-6 font-heading text-2xl font-medium sm:text-3xl">{title}</h1>
-      <p className="mt-3 max-w-md text-pretty text-muted-foreground">{description}</p>
-      {actions && <div className="mt-8 flex flex-wrap justify-center gap-2">{actions}</div>}
+      <div className="flex flex-col items-center gap-8">
+        <div className="flex flex-col items-center gap-6">
+          <p className="font-heading text-7xl font-light tracking-tight text-muted-foreground/60 tabular sm:text-8xl">{mark}</p>
+          <div className="rule-double w-24" aria-hidden />
+          <div className="flex flex-col items-center gap-3">
+            <h1 className="font-heading text-2xl font-medium sm:text-3xl">{title}</h1>
+            <p className="max-w-md text-pretty text-muted-foreground">{description}</p>
+          </div>
+        </div>
+        {actions && <div className="flex flex-wrap justify-center gap-2">{actions}</div>}
+      </div>
     </div>
   );
 }
