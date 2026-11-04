@@ -10,6 +10,7 @@ import { addDays, compareDDMMYYYY, isValidDDMMYYYY } from "./dates";
 import { crossFieldRule, ddmmyyyy, numberError, optionalText, phoneNumber, recordIdSchema, rupees, text } from "./field-rules";
 import { flag } from "./filters";
 import { ROUTE_OTHER } from "./general";
+import { wordCount } from "./words";
 
 // ---------------------------------------------------------------------------
 // Field rules (shared ones in field-rules.ts)
@@ -141,7 +142,7 @@ export const BILL_NOTE_MAX_LINES = 3;
 /** A note's words and printed lines: the lines typed, blank ones aside. */
 export function billNoteCounts(note: string): { words: number; lines: number } {
   const text = note.trim();
-  return { words: text ? text.split(/\s+/).length : 0, lines: text.split(/\r?\n/).filter((line) => line.trim()).length };
+  return { words: wordCount(text), lines: text.split(/\r?\n/).filter((line) => line.trim()).length };
 }
 
 function checkBillNote(note: string, ctx: z.RefinementCtx): void {

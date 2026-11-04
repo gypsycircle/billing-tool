@@ -33,7 +33,8 @@ import {
 } from "@/lib/domain/booking.schema";
 import { bookingHistory, historyChanged, isCancelledEvent, type HistoryEvent, type HistoryRow } from "@/lib/domain/booking-history";
 import { calculateBookingAmounts } from "@/lib/domain/calculations";
-import { defaultDueDate, parseDDMMYYYY, toISODate, todayIST } from "@/lib/domain/dates";
+import { billFileName } from "@/lib/domain/bill-text";
+import { defaultDueDate, parseDDMMYYYY, todayIST } from "@/lib/domain/dates";
 import { PAGE_SIZE, type BookingFilters, type PageInfo } from "@/lib/domain/filters";
 import {
   BOOKING_LIST_FIELD_IDS as LIST_FIELD_IDS,
@@ -170,12 +171,6 @@ export const getBooking = cache(async (id: string): Promise<Booking> => {
   return booking;
 });
 
-/** Invoice numbers allow / (e.g. GC/2026/7): the download's name keeps to safe characters. */
-function billFileName(invoiceNumber: string, day?: string): string {
-  const safe = invoiceNumber.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-  return `Bill-of-Supply-${safe || "invoice"}${day ? `-${day}` : ""}.pdf`;
-}
-
 /**
  * The Bill of Supply PDF, drawn from the latest saved booking, with its file
  * name. Archived bookings have none until restored.
@@ -186,7 +181,7 @@ export async function getBillOfSupply(id: string): Promise<BillFile> {
   const booking = await findBillBooking(id); // only what the bill prints
   if (!booking) throw new NotFoundError("booking");
   if (isArchived(booking)) throw new BillUnavailableError();
-  return billFile({ ...booking, cancellation: cancellationOf(booking) }, billFileName(booking.invoiceNumber));
+  return billFile({ ...booking, cancellation: cancellationOf(booking) }, billFileName(booking));
 }
 
 /** A booking's history, newest first. */
@@ -218,7 +213,7 @@ export async function getHistoryBill(id: string, entryId: string): Promise<BillF
     (isCancelledEvent(entry.event)
       ? { cancelledOn: booking.cancelledOn ?? entry.changedOn, refundAmount: entry.refundAmount ?? 0, refundedOn: entry.refundPaid ? (booking.refundedOn ?? entry.changedOn) : null }
       : null);
-  return billFile({ ...entry.bill, cancellation }, billFileName(entry.bill.invoiceNumber, toISODate(entry.changedOn)));
+  return billFile({ ...entry.bill, cancellation }, billFileName(entry.bill));
 }
 
 type BillFile = { bytes: Uint8Array; type: "application/pdf"; fileName: string; invoiceNumber: string };

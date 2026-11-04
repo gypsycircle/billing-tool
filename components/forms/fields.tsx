@@ -13,6 +13,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { DatePicker } from "@/components/shared/date-picker";
 import { OptionSelect } from "@/components/shared/option-select";
 import { Textarea } from "@/components/ui/textarea";
+import { limitWords, wordCount } from "@/lib/domain/words";
 import { cn } from "@/lib/utils";
 import { MoneyInput } from "./money-input";
 
@@ -275,12 +276,20 @@ export function TextareaField<T extends FieldValues = FieldValues>({
   required,
   className,
   maxLength,
+  maxWords,
   placeholder,
-}: BaseProps<T> & { maxLength: number; placeholder?: string }) {
+}: BaseProps<T> & {
+  maxLength: number;
+  /** Limits and counts words instead of showing the characters; `maxLength` still caps them. */
+  maxWords?: number;
+  placeholder?: string;
+}) {
   const { register, control, getFieldState, formState } = useFormContext<T>();
   const { error } = getFieldState(name, formState);
   const value = String(useWatch({ control, name }) ?? "");
-  const over = value.length > maxLength;
+  const words = wordCount(value);
+  const over = maxWords ? words > maxWords : value.length > maxLength;
+  const field = register(name);
 
   return (
     <FieldShell name={name} label={label} required={required} className={className} invalid={!!error || over} error={error?.message}>
@@ -291,12 +300,17 @@ export function TextareaField<T extends FieldValues = FieldValues>({
         aria-invalid={!!error || over || undefined}
         aria-describedby={`${name}-count`}
         className="min-h-24 bg-card"
-        {...register(name)}
+        maxLength={maxWords ? maxLength : undefined}
+        {...field}
+        onChange={(event) => {
+          if (maxWords) event.target.value = limitWords(event.target.value, value, maxWords);
+          return field.onChange(event);
+        }}
       />
       <div className="flex items-start justify-between gap-4 text-xs text-muted-foreground">
         <span>{hint}</span>
         <span id={`${name}-count`} className={cn("tabular shrink-0", over && "font-medium text-destructive")}>
-          {value.length}/{maxLength}
+          {maxWords ? `${words}/${maxWords} words` : `${value.length}/${maxLength}`}
         </span>
       </div>
     </FieldShell>

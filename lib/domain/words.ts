@@ -60,3 +60,19 @@ export function amountToWords(amount: number): string {
 export function plural(count: number, word: string): string {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
+
+/** How many words a text has. */
+export const wordCount = (text: string): number => (text.trim() ? text.trim().split(/\s+/).length : 0);
+
+/**
+ * What a text box should hold after `next` was entered, at most `max` words: at
+ * the limit, more typing is refused; a paste over it keeps its first `max`
+ * words. A text already over the limit (saved before it) can still be cut down.
+ */
+export function limitWords(next: string, previous: string, max: number): string {
+  const words = wordCount(next);
+  const before = wordCount(previous);
+  if (words <= max || words <= before) return next;
+  if (before >= max) return previous;
+  return next.match(new RegExp(`^\\s*(?:\\S+\\s+){${max - 1}}\\S+`))?.[0] ?? previous;
+}

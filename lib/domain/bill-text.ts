@@ -63,3 +63,19 @@ export const CANCELLATION_CHARGE_LABEL = "Cancellation Charge";
 export function billWords(totalAmount: number, cancellation: BillCancellation | null | undefined): { amount: number; label: string } {
   return cancellation ? { amount: cancellation.refundAmount, label: `${refundLabel(cancellation)} (in words)` } : { amount: totalAmount, label: "Total amount (in words)" };
 }
+
+/** A part of a file name: Latin letters and digits, joined by hyphens. Accents are simplified; anything else goes. */
+const fileNamePart = (text: string, max: number): string =>
+  text
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, max)
+    .replace(/-+$/, "");
+
+/** A downloaded bill's name: "Afraq-26-12-2026-WINTER-SPITI.pdf" (customer, trip start, package). Safe in a file name and a header. */
+export function billFileName({ customerName, tripStartDate, packageName }: Pick<Booking, "customerName" | "tripStartDate" | "packageName">): string {
+  const parts = [fileNamePart(customerName, 60), fileNamePart(tripStartDate, 10), fileNamePart(packageName, 60)].filter(Boolean);
+  return `${parts.join("-") || "Bill-of-Supply"}.pdf`;
+}

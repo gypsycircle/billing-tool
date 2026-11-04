@@ -202,6 +202,17 @@
     display: none;
     appearance: none;
   }
+  /* A browser's autofill paints the <input> itself, and in an InputGroup that's a
+     square box shorter than the field. So its own colour never shows (the long
+     transition holds it off), and the whole field takes a colour from the theme. */
+  input:autofill {
+    transition: background-color 9999999s ease-out !important;
+    -webkit-text-fill-color: var(--foreground);
+    caret-color: var(--foreground);
+  }
+  [data-slot="input-group"]:has(input:autofill) {
+    background-color: var(--accent) !important;
+  }
   ::selection {
     background: color-mix(in oklch, var(--brand) 22%, transparent);
   }

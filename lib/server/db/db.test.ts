@@ -539,7 +539,8 @@ describe("getBillOfSupply", () => {
     const a = await createBooking(draft());
     const bill = await getBillOfSupply(a.bookingId);
     expect(bill.invoiceNumber).toBe(a.invoiceNumber);
-    expect([bill.type, bill.fileName]).toEqual(["application/pdf", `Bill-of-Supply-${a.invoiceNumber}.pdf`]);
+    expect(bill.type).toBe("application/pdf");
+    expect(bill.fileName).toMatch(/^[A-Za-z-]+-\d{2}-\d{2}-\d{4}-[A-Za-z-]+\.pdf$/);
     expect(new TextDecoder().decode(bill.bytes.slice(0, 5))).toBe("%PDF-");
     await archiveBooking(a.bookingId, a.updatedAt);
     await expect(getBillOfSupply(a.bookingId)).rejects.toBeInstanceOf(BillUnavailableError);
@@ -662,14 +663,14 @@ describe("booking history", () => {
   });
 
   it("serves each row's own bill, for that booking only; archived bookings have none", async () => {
-    const { archiveBooking, createBooking, getBookingHistory, getHistoryBill, updateBooking } = await import("../bookings/service");
+    const { archiveBooking, createBooking, getBillOfSupply, getBookingHistory, getHistoryBill, updateBooking } = await import("../bookings/service");
     const a = await createBooking(twoPeople());
     const more = await updateBooking(a.bookingId, { travellers: 3 }, a.updatedAt);
     const other = await createBooking(twoPeople());
     const [latest, first] = await getBookingHistory(a.bookingId);
     const file = await getHistoryBill(a.bookingId, first.entryId);
     expect(new TextDecoder().decode(file.bytes.slice(0, 5))).toBe("%PDF-");
-    expect(file.fileName).toBe(`Bill-of-Supply-${a.invoiceNumber}-${isoToday()}.pdf`);
+    expect(file.fileName).toBe((await getBillOfSupply(a.bookingId)).fileName);
     await expect(getHistoryBill(other.bookingId, first.entryId)).rejects.toThrow("History entry not found.");
     await expect(getHistoryBill(a.bookingId, crypto.randomUUID())).rejects.toThrow("History entry not found.");
     await expect(getHistoryBill(a.bookingId, "nope")).rejects.toThrow("History entry not found.");

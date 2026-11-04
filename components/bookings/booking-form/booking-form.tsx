@@ -165,7 +165,7 @@ export function BookingForm(props: BookingFormProps) {
           className="sm:col-span-2"
         />
         {listField("destination", "Destination", {})}
-        <TextField name="batchName" label="Batch" placeholder="e.g. 19TH JAN DELHI" required />
+        <TextField name="batchName" label="Batch" placeholder="e.g. 19th Jan Delhi" required />
         <DateField name="tripStartDate" label="Trip starts" min={firstTripDay} required />
         <DateField name="tripEndDate" label="Trip ends" min={firstEndDay} required />
         <ListSelectField<BookingFormInput>
@@ -179,18 +179,18 @@ export function BookingForm(props: BookingFormProps) {
           required
           className="sm:col-span-2"
         />
-        {routeIsTyped && <TextField name="routeOther" label="Type the route" placeholder="e.g. Kochi-Munnar-Thekkady" maxLength={200} autoComplete="off" required className="sm:col-span-2" />}
+        {routeIsTyped && <TextField name="routeOther" label="Type the route" placeholder="e.g. Delhi to Delhi" maxLength={200} autoComplete="off" required className="sm:col-span-2" />}
       </FormSection>
 
       <FormSection number="04" title="Pricing" description="What each traveller pays, less any discount, in whole rupees.">
-        <NumberField name="travellers" label="Travellers" currency={false} suffix="PERSON" required disabled={moneyLocked} />
+        <NumberField name="travellers" label="Travellers" currency={false} suffix="Person" required disabled={moneyLocked} />
         <NumberField name="ratePerPerson" label="Rate per person" required disabled={moneyLocked} />
         <NumberField name="discountAmount" label="Discount" hint="Total discount in rupees." required disabled={moneyLocked} />
       </FormSection>
 
       <FormSection number="05" title="Payment" description="What the customer has paid so far.">
-        {packageType === "Group" && <NumberField name="slotAmount" label="Slot amount" hint="Non-refundable if the trip is cancelled." required disabled={moneyLocked} />}
         <NumberField name="amountPaid" label="Amount received" required disabled={moneyLocked} />
+        {packageType === "Group" && <NumberField name="slotAmount" label="Slot amount" hint="Non-refundable if the trip is cancelled." required disabled={moneyLocked} />}
       </FormSection>
 
       <FormSection number="06" title="Notes">
@@ -198,7 +198,8 @@ export function BookingForm(props: BookingFormProps) {
           name="invoiceNote"
           label="Invoice note"
           maxLength={300}
-          hint={`Printed under NOTES on the bill. ${noteCounts.words} of ${BILL_NOTE_MAX_WORDS} words, ${noteCounts.lines} of ${BILL_NOTE_MAX_LINES} lines.`}
+          maxWords={BILL_NOTE_MAX_WORDS}
+          hint={`Printed under NOTES on the bill. ${noteCounts.lines} of ${BILL_NOTE_MAX_LINES} lines.`}
           placeholder="e.g. complimentary for 5 pax has been added."
           className="sm:col-span-2"
         />
